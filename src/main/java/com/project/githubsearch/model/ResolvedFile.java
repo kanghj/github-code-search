@@ -1,16 +1,17 @@
 package com.project.githubsearch.model;
 
 import java.util.ArrayList;
+import java.util.List;
 
 public class ResolvedFile {
-    private ArrayList<Query> queries;
+    private Query query;
     private String url;
     private String pathFile;
-    private ArrayList<Integer> lines;
-    private ArrayList<String> codes = new ArrayList<String>();
+    private List<Integer> lines;
+    private List<String> codes = new ArrayList<String>();
 
-    public ResolvedFile(ArrayList<Query> queries, String url, String pathFile, ArrayList<Integer> lines, ArrayList<String> codes) {
-        this.queries = queries;
+    public ResolvedFile(Query query, String url, String pathFile, List<Integer> lines, List<String> codes) {
+        this.query = query;
         this.url = url;
         this.pathFile = pathFile;
         this.lines = lines;
@@ -18,10 +19,10 @@ public class ResolvedFile {
     }
 
     /**
-     * @return the queries
+     * 
      */
-    public ArrayList<Query> getQueries() {
-        return queries;
+    public Query getQuery() {
+        return query;
     }
 
     /**
@@ -41,14 +42,14 @@ public class ResolvedFile {
     /**
      * @return the line
      */
-    public ArrayList<Integer> getLines() {
+    public List<Integer> getLines() {
         return lines;
     }
 
     /**
      * @return the codes
      */
-    public ArrayList<String> getCodes() {
+    public List<String> getCodes() {
         return codes;
     }
 
@@ -56,8 +57,8 @@ public class ResolvedFile {
     /**
      * @param queries the queries to set
      */
-    public void setQueries(ArrayList<Query> queries) {
-        this.queries = queries;
+    public void setQuery(Query query) {
+        this.query = query;
     }
 
     /**
@@ -77,14 +78,14 @@ public class ResolvedFile {
     /**
      * @param line the line to set
      */
-    public void setLines(ArrayList<Integer> lines) {
+    public void setLines(List<Integer> lines) {
         this.lines = lines;
     }
 
     /**
      * @param codes the codes to set
      */
-    public void setCodes(ArrayList<String> codes) {
+    public void setCodes(List<String> codes) {
         this.codes = codes;
     }
 

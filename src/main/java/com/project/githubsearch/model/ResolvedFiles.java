@@ -2,11 +2,11 @@ package com.project.githubsearch.model;
 
 import java.util.ArrayList;
 
-public class ResolvedData {
+public class ResolvedFiles {
 
     ArrayList<ResolvedFile> resolvedFiles;
 
-    public ResolvedData() {
+    public ResolvedFiles() {
         this.resolvedFiles = new ArrayList<ResolvedFile>();
     }
 

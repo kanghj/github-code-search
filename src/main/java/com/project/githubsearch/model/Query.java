@@ -1,11 +1,12 @@
 package com.project.githubsearch.model;
 
 import java.util.ArrayList;
+import java.util.List;
 
 public class Query {
     private String fullyQualifiedName;
     private String method;
-    private ArrayList<String> arguments;
+    private List<String> arguments;
 
     public Query() {
         this.fullyQualifiedName = "";
@@ -16,14 +17,14 @@ public class Query {
     /**
      * @return the arguments
      */
-    public ArrayList<String> getArguments() {
+    public 	List<String> getArguments() {
         return arguments;
     }
 
     /**
      * @return the fullyQualifiedName
      */
-    public String getFullyQualifiedName() {
+    public String getFullyQualifiedClassName() {
         return fullyQualifiedName;
     }
 
@@ -37,7 +38,7 @@ public class Query {
     /**
      * @param fullyQualifiedName the fullyQualifiedName to set
      */
-    public void setFullyQualifiedName(String fullyQualifiedName) {
+    public void setFullyQualifiedClassName(String fullyQualifiedName) {
         this.fullyQualifiedName = fullyQualifiedName;
     }
 
@@ -47,39 +48,25 @@ public class Query {
     public void setMethod(String method) {
         this.method = method;
     }
-
+    
     /**
      * @param arguments the arguments to set
      */
-    public void setArguments(ArrayList<String> arguments) {
+    public void setArguments(List<String> arguments) {
         this.arguments = arguments;
     }
+
 
     @Override
     public String toString() {
         String query = ""  + this.fullyQualifiedName + "#" + this.method;
-        query += "(";
-        for (int i = 0; i < this.arguments.size(); i++) {
-            if (i != this.arguments.size()-1){
-                query += this.arguments.get(i) + ", ";
-            } else {
-                query += this.arguments.get(i);
-            }
-        }
-        query += ")";
+
         return query;
     }
 
     public String toStringRequest() {
-        String request = this.fullyQualifiedName + " " + this.method;
-        request += " ";
-        for (int i = 0; i < this.arguments.size(); i++) {
-            if (i != this.arguments.size() - 1) {
-                request += this.arguments.get(i) + " ";
-            } else {
-                request += this.arguments.get(i);
-            }
-        }
+        String request = this.fullyQualifiedName + " " + this.method +"(";
+ 
         return request;
     }
 
