@@ -34,7 +34,6 @@ import com.project.githubsearch.model.Query;
 import com.project.githubsearch.model.ResolvedFiles;
 import com.project.githubsearch.model.ResolvedFile;
 import com.project.githubsearch.model.Response;
-import com.project.githubsearch.model.SynchronizedData;
 import com.project.githubsearch.model.SynchronizedFeeder;
 import com.project.githubsearch.model.SynchronizedTypeSolver;
 import com.project.githubsearch.model.GithubToken;
@@ -45,6 +44,7 @@ import org.json.JSONObject;
 import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ParseProblemException;
 import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.PackageDeclaration;
 import com.github.javaparser.ast.expr.Name;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.resolution.UnsolvedSymbolException;
@@ -84,8 +84,8 @@ public class App {
 
 	// number of needed file to be resolved
 	private static int MAX_RESULT = 20; // 30 for local testing; set to 100 for server testing; then 500 for the
-												// final run
-	private static int MAX_TO_INSPECT = 10000; // should increase this number  
+										// final run
+	private static int MAX_TO_INSPECT = 10000; // should increase this number
 
 	// folder location to save the downloaded files and jars
 	private static String DATA_LOCATION = "src/main/java/com/project/githubsearch/data/";
@@ -99,21 +99,21 @@ public class App {
 	private static SynchronizedTypeSolver synchronizedTypeSolver = new SynchronizedTypeSolver();
 
 	private static Instant start;
-	
+
 	public final static boolean debug = true;
 
 	public static void main(String[] args) {
 		String input = args[0];
-		
+
 		int numberToRetrieve = Integer.parseInt(args[1]);
-		MAX_RESULT = numberToRetrieve;  // not exactly. This is the number of unique candidate-usage that is wanted
-		
+		MAX_RESULT = numberToRetrieve; // not exactly. This is the number of unique candidate-usage that is wanted
+
 		synchronizedFeeder = new SynchronizedFeeder(args[2].split(","));
-		
+
 		Query query = parseQuery(input);
 
 		printQuery(query);
-		
+
 		initUniqueFolderToSaveData(query);
 		start = Instant.now();
 		processQuery(query);
@@ -178,7 +178,7 @@ public class App {
 		int id = 0;
 
 		while (resolvedFiles.getResolvedFiles().size() < MAX_RESULT && id < MAX_TO_INSPECT) {
-			
+
 			response = handleGithubRequestWithUrl(nextUrlRequest);
 			item = response.getItem();
 			nextUrlRequest = response.getNextUrlRequest();
@@ -186,11 +186,11 @@ public class App {
 				JSONObject instance = new JSONObject(item.get(it).toString());
 				data.add(instance.getString("html_url"));
 			}
-		
+
 			while (!data.isEmpty()) {
 				String htmlUrl = data.remove();
 				System.out.println();
-				id ++;
+				id++;
 				if (debug) {
 					System.out.println("ID: " + id);
 					System.out.println("File Url: " + htmlUrl);
@@ -198,47 +198,56 @@ public class App {
 					if (id % 50 == 0) {
 						logTimingStatistics();
 						System.out.println("ID: " + id);
-						
+
 					}
 				}
 				downloadAndResolveFile(id, htmlUrl, query);
-				
+
 				if (resolvedFiles.getResolvedFiles().size() >= MAX_RESULT && id >= MAX_TO_INSPECT) {
 					break;
 				}
 			}
 		}
-		
+
 		logTimingStatistics();
 		System.out.println("===== Statistics about instances that we managed to resolve =====");
 		System.out.println("<id>: <Number of similar copies found>");
 		int total = 0;
 		for (Entry<Integer, Boolean> entry : Dedup.canonicalCopiesResolvable.entrySet()) {
-			if (!entry.getValue()) continue;
-			
+			if (!entry.getValue())
+				continue;
+
 			System.out.println("=== " + entry.getKey() + " : " + Dedup.canonicalCopiesCount.get(entry.getKey()));
 			total += Dedup.canonicalCopiesCount.get(entry.getKey());
 		}
 		System.out.println("Total: " + total);
-		
-		System.out.println("Writing metadata to " + DATA_LOCATION + "metadata.csv");
-		System.out.println("\t\t and " + DATA_LOCATION + "metadata_locations.csv");
-		try (BufferedWriter writer = new BufferedWriter(new FileWriter(DATA_LOCATION + "metadata.csv"))) {
+
+		String metadataDirectory = DATA_LOCATION + "metadata/";
+		if (!new File(metadataDirectory).exists()) {
+			new File(metadataDirectory).mkdirs();
+		}
+
+		System.out.println("Writing metadata to " + metadataDirectory + "metadata.csv");
+		System.out.println("\t\t and " + metadataDirectory + "metadata_locations.csv");
+		try (BufferedWriter writer = new BufferedWriter(new FileWriter(DATA_LOCATION + "metadata/metadata.csv"))) {
 			for (Entry<Integer, Boolean> entry : Dedup.canonicalCopiesResolvable.entrySet()) {
-				if (!entry.getValue()) continue;
-				
-				writer.write(entry.getKey() + "," + Dedup.canonicalCopiesCount.get(entry.getKey()) );
-				
+				if (!entry.getValue())
+					continue;
+
+				writer.write(entry.getKey() + "," + Dedup.canonicalCopiesCount.get(entry.getKey()) + "\n");
+
 			}
 		} catch (IOException e) {
 			e.printStackTrace();
 			System.out.println("Unable to write metadata ...");
 		}
-		
-		try (BufferedWriter writer = new BufferedWriter(new FileWriter(DATA_LOCATION + "metadata_locations.csv"))) {
+
+		try (BufferedWriter writer = new BufferedWriter(
+				new FileWriter(DATA_LOCATION + "metadata/metadata_locations.csv"))) {
 			for (Entry<Integer, Boolean> entry : Dedup.canonicalCopiesResolvable.entrySet()) {
-				if (!entry.getValue()) continue;
-				
+				if (!entry.getValue())
+					continue;
+
 				int i = 0;
 				for (String url : Dedup.canonicalCopiesUrl.get(entry.getKey())) {
 					writer.write(entry.getKey() + "," + i + "," + url + "\n");
@@ -269,22 +278,21 @@ public class App {
 	}
 
 	public static void downloadAndResolveFile(int id, String htmlUrl, Query query) {
-		boolean isDownloaded = downloadFile(htmlUrl, id);
-		if (!isDownloaded)
+		Optional<String> filePathOpt = downloadFile(htmlUrl, id);
+		if (!filePathOpt.isPresent())
 			return;
 
-		String filePath = DATA_LOCATION + "files/" + id + ".txt";
-		List<String> lines = readLineByLine(filePath); // if fail due to some exception, will be empty
+		String filePath = filePathOpt.get();
+
+		List<String> lines = readLineByLine(filePath); // if fail due to some exception, then it will be empty
 		if (!lines.isEmpty() && Dedup.accept(id, htmlUrl, lines)) {
-			Optional<ResolvedFile> resolvedFileOpt = resolveFile(id, query);
+			Optional<ResolvedFile> resolvedFileOpt = resolveFile(filePath, query);
 			if (resolvedFileOpt.isPresent()) {
 				ResolvedFile resolvedFile = resolvedFileOpt.get();
-				
 
 				resolvedFile.setUrl(htmlUrl);
 
 				if (debug) {
-					
 					logTimingStatistics();
 					System.out.println("URL: " + resolvedFile.getUrl());
 					System.out.println("Path to File: " + resolvedFile.getPathFile());
@@ -300,9 +308,23 @@ public class App {
 				}
 
 				resolvedFiles.add(resolvedFile);
-				
+
 				Dedup.indicateCanBeResolved(id);
-				
+
+				// move file to directory such that the package name is respected. (usually
+				// useful for further analysis)
+
+				String packageName = resolvedFile.getPackageName();
+				if (!packageName.isEmpty()) {
+					String packageDirectories = packageName.replaceAll("\\.", "/");
+
+					String[] splitted = htmlUrl.split("/");
+					String className = splitted[splitted.length - 1];
+
+					new File(filePath).renameTo(
+							new File(DATA_LOCATION + id + "/" + packageDirectories + "/" + className + ".txt"));
+				}
+
 				return;
 			}
 		} else {
@@ -310,19 +332,17 @@ public class App {
 			if (debug) {
 				System.out.println("Clone-like: " + id + " url=" + htmlUrl);
 			}
-			System.out.println("# Types of usage we have seen so far (this is not necessarily an actual usage): " 
+			System.out.println("# Types of usage we have seen so far (this is not necessarily an actual usage): "
 					+ Dedup.resolvable);
 		}
 
 		// move file from DATA_LOCATION to DATA_LOCATION_FAILED
 		if (debug) {
-			String pathFile = new String(DATA_LOCATION + "files/" + id + ".txt");
-			new File(pathFile).renameTo(new File(DATA_LOCATION_FAILED + "files/" + id + ".txt"));
-			
-			System.out.println("moving file");
+			new File(filePath).renameTo(new File(DATA_LOCATION_FAILED + "files/" + id + ".txt"));
+
+			System.out.println("moving unresolvable file");
 		} else {
-			String pathFile = new String(DATA_LOCATION + "files/" + id + ".txt");
-			new File(pathFile).delete(); // save space.
+			new File(filePath).delete(); // save space.
 		}
 
 	}
@@ -353,34 +373,44 @@ public class App {
 		}
 	}
 
-	private static boolean downloadFile(String htmlUrl, int fileId) {
+	private static Optional<String> downloadFile(String htmlUrl, int fileId) {
 		// convert html url to downloadable url
-		// based on my own analysis
 		String downloadableUrl = convertHTMLUrlToDownloadUrl(htmlUrl);
+
+		String[] splitted = htmlUrl.split("/");
+		String className = splitted[splitted.length - 1];
 
 		// using it to make a unique name
 		// replace java to txt for excluding from maven builder
-		String fileName = fileId + ".txt";
-
-		// System.out.println();
-		// System.out.println("Downloading the file: " + (fileId));
-		// System.out.println("HTML Url: " + htmlUrl);
-
-		boolean finished = false;
+		String fileName = className + ".txt";
 
 		try {
 			// download file from url
 			URL url;
 			url = new URL(downloadableUrl);
 			ReadableByteChannel readableByteChannel = Channels.newChannel(url.openStream());
-			String pathFile = new String(DATA_LOCATION + "files/" + fileName);
+			String pathFile = DATA_LOCATION + fileId + "/" + fileName;
+
+			if (!new File(DATA_LOCATION + fileId).exists()) {
+				if (!new File(DATA_LOCATION + fileId).mkdirs()) {
+					throw new RuntimeException("Cannot make directories");
+				}
+			}
+
+			System.out.println("download to " + pathFile);
+
 			FileOutputStream fileOutputStream = new FileOutputStream(pathFile);
 			fileOutputStream.getChannel().transferFrom(readableByteChannel, 0, Long.MAX_VALUE);
 			fileOutputStream.close();
-			finished = true;
+
+			System.out.println("download succeeded at " + pathFile);
+
+			return Optional.of(pathFile);
+
 		} catch (FileNotFoundException e) {
 			System.out.println("Can't download the github file");
 			System.out.println("File not found!");
+			e.printStackTrace();
 		} catch (MalformedURLException e) {
 			System.out.println("Malformed URL Exception while downloading!");
 			e.printStackTrace();
@@ -388,12 +418,12 @@ public class App {
 			System.out.println("Can't save the downloaded file");
 		}
 
-		return finished;
+		return Optional.empty();
 	}
 
-	private static Optional<ResolvedFile> resolveFile(int fileId, Query query) {
+	private static Optional<ResolvedFile> resolveFile(String filePath, Query query) {
 
-		return resolve(query, DATA_LOCATION + "files/" + fileId + ".txt");
+		return resolve(query, filePath);
 
 	}
 
@@ -420,6 +450,11 @@ public class App {
 			StaticJavaParser.getConfiguration()
 					.setSymbolResolver(new JavaSymbolSolver(synchronizedTypeSolver.getTypeSolver()));
 			CompilationUnit cu = StaticJavaParser.parse(file);
+
+			Optional<PackageDeclaration> packageName = cu.getPackageDeclaration();
+			if (packageName.isPresent()) {
+				resolvedFile.setPackageName(packageName.map(packageDecl -> packageDecl.getNameAsString()).get());
+			}
 
 			boolean isMethodMatch = false;
 			boolean isResolved = false;
@@ -652,8 +687,6 @@ public class App {
 		return download_url;
 	}
 
-
-
 	private static Response handleGithubRequestWithUrl(String url) {
 
 		boolean response_ok = false;
@@ -730,8 +763,8 @@ public class App {
 
 		Response response = new Response();
 
-		String url = endpoint + "?" + PARAM_QUERY + "=" + query + "+in:file+language:java" + "&" + PARAM_PAGE + "=" + page
-				+ "&" + PARAM_PER_PAGE + "=" + per_page_limit;
+		String url = endpoint + "?" + PARAM_QUERY + "=" + query + "+in:file+language:java" + "&" + PARAM_PAGE + "="
+				+ page + "&" + PARAM_PER_PAGE + "=" + per_page_limit;
 		response = handleGithubRequestWithUrl(url);
 
 		return response;
@@ -772,7 +805,7 @@ public class App {
 			System.out.println("linkHeader is " + linkHeader);
 			throw new RuntimeException("Next url is null!");
 		}
-		
+
 		return next;
 	}
 

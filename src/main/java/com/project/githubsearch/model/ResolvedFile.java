@@ -2,6 +2,9 @@ package com.project.githubsearch.model;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+
+import com.github.javaparser.ast.PackageDeclaration;
 
 public class ResolvedFile {
     private Query query;
@@ -9,6 +12,7 @@ public class ResolvedFile {
     private String pathFile;
     private List<Integer> lines;
     private List<String> codes = new ArrayList<String>();
+    private Optional<String> packageName = Optional.empty();
 
     public ResolvedFile(Query query, String url, String pathFile, List<Integer> lines, List<String> codes) {
         this.query = query;
@@ -87,6 +91,14 @@ public class ResolvedFile {
      */
     public void setCodes(List<String> codes) {
         this.codes = codes;
+    }
+    
+    public void setPackageName(String packageName) {
+    	this.packageName = Optional.of(packageName);
+    }
+    
+    public String getPackageName() {
+    	return this.packageName.orElseGet(() -> "");
     }
 
 }
