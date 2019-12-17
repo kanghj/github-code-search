@@ -3,8 +3,10 @@ package com.project.githubsearch;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.FileOutputStream;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 
@@ -12,17 +14,19 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Queue;
-import java.util.Scanner;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import com.github.kevinsawicki.http.HttpRequest;
 import com.project.githubsearch.model.MavenPackage;
@@ -60,9 +64,6 @@ import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeS
 public class App {
 
 	// run multiple token
-	// please make sure that the number of thread is equal with the number of tokens
-	private static final int NUMBER_THREADS = 3;
-	private static final int NUMBER_CORE = 1;
 
 	// parameter for the request
 	private static final String PARAM_QUERY = "q"; //$NON-NLS-1$
@@ -82,8 +83,9 @@ public class App {
 	private static final int UNPROCESSABLE_ENTITY = 422;
 
 	// number of needed file to be resolved
-	private static final int MAX_RESULT = 10; // 30 for local testing; set to 100 for server testing; then 500 for the
+	private static int MAX_RESULT = 20; // 30 for local testing; set to 100 for server testing; then 500 for the
 												// final run
+	private static int MAX_TO_INSPECT = 10000; // should increase this number  
 
 	// folder location to save the downloaded files and jars
 	private static String DATA_LOCATION = "src/main/java/com/project/githubsearch/data/";
@@ -92,28 +94,26 @@ public class App {
 
 	private static final String endpoint = "https://api.github.com/search/code";
 
-	private static SynchronizedData synchronizedData = new SynchronizedData();
-	private static SynchronizedFeeder synchronizedFeeder = new SynchronizedFeeder();
+	private static SynchronizedFeeder synchronizedFeeder;
 	private static ResolvedFiles resolvedFiles = new ResolvedFiles();
 	private static SynchronizedTypeSolver synchronizedTypeSolver = new SynchronizedTypeSolver();
 
 	private static Instant start;
-	private static Instant currentTime;
+	
+	public final static boolean debug = true;
 
 	public static void main(String[] args) {
-//        Scanner scanner = new Scanner(System.in);
-
-		// TODO: i don't need interactive...
-		// just use args
-		// and just one query
-//        System.out.println("Please Input Your Query: ");
-//        String input = scanner.nextLine();
-//        scanner.close();
-
 		String input = args[0];
+		
+		int numberToRetrieve = Integer.parseInt(args[1]);
+		MAX_RESULT = numberToRetrieve;  // not exactly. This is the number of unique candidate-usage that is wanted
+		
+		synchronizedFeeder = new SynchronizedFeeder(args[2].split(","));
+		
 		Query query = parseQuery(input);
 
 		printQuery(query);
+		
 		initUniqueFolderToSaveData(query);
 		start = Instant.now();
 		processQuery(query);
@@ -122,18 +122,17 @@ public class App {
 
 	private static List<String> getSnippetCode(String pathFile, List<Integer> lineNumbers) {
 		List<String> codes = new ArrayList<String>();
-		
+
 		if (lineNumbers.isEmpty()) {
 			throw new RuntimeException("Should not be empty!!");
 		}
-		
-		int min = lineNumbers.stream().min(Integer::compare).get();
-		int max = lineNumbers.stream().max(Integer::compare).get();	
 
-		
+		int min = lineNumbers.stream().min(Integer::compare).get();
+		int max = lineNumbers.stream().max(Integer::compare).get();
+
 		try (BufferedReader reader = new BufferedReader(new FileReader(pathFile))) {
 			int i = 0;
-			
+
 			String line = reader.readLine();
 			while (line != null) {
 				i++;
@@ -155,13 +154,13 @@ public class App {
 
 		String queryStr = query.toStringRequest();
 
-		int lower_bound, upper_bound, page, per_page_limit;
-		lower_bound = 0;
-		upper_bound = 384000;
+		int lowerBound, upperBound, page, perPageLimit;
+		lowerBound = 0;
+		upperBound = 384000;
 		page = 1;
-		per_page_limit = 30;
+		perPageLimit = 30;
 
-		Response response = handleCustomGithubRequest(queryStr, lower_bound, upper_bound, page, per_page_limit);
+		Response response = handleCustomGithubRequest(queryStr, lowerBound, upperBound, page, perPageLimit);
 		if (response.getTotalCount() == 0) {
 			System.out.println("No item match with the query");
 			return;
@@ -178,88 +177,158 @@ public class App {
 
 		int id = 0;
 
-		while (resolvedFiles.getResolvedFiles().size() < MAX_RESULT) {
-			if (data.size() < (2 * NUMBER_CORE)) {
-				response = handleGithubRequestWithUrl(nextUrlRequest);
-				item = response.getItem();
-				nextUrlRequest = response.getNextUrlRequest();
-				for (int it = 0; it < item.length(); it++) {
-					JSONObject instance = new JSONObject(item.get(it).toString());
-					data.add(instance.getString("html_url"));
+		while (resolvedFiles.getResolvedFiles().size() < MAX_RESULT && id < MAX_TO_INSPECT) {
+			
+			response = handleGithubRequestWithUrl(nextUrlRequest);
+			item = response.getItem();
+			nextUrlRequest = response.getNextUrlRequest();
+			for (int it = 0; it < item.length(); it++) {
+				JSONObject instance = new JSONObject(item.get(it).toString());
+				data.add(instance.getString("html_url"));
+			}
+		
+			while (!data.isEmpty()) {
+				String htmlUrl = data.remove();
+				System.out.println();
+				id ++;
+				if (debug) {
+					System.out.println("ID: " + id);
+					System.out.println("File Url: " + htmlUrl);
+				} else {
+					if (id % 50 == 0) {
+						logTimingStatistics();
+						System.out.println("ID: " + id);
+						
+					}
+				}
+				downloadAndResolveFile(id, htmlUrl, query);
+				
+				if (resolvedFiles.getResolvedFiles().size() >= MAX_RESULT && id >= MAX_TO_INSPECT) {
+					break;
 				}
 			}
-
-			// System.out.println("=====================");
-			// System.out.println("Without multi-threading");
-			// System.out.println("=====================");
-			id = id + 1;
-			String htmlUrl = data.remove();
-			System.out.println();
-			System.out.println("ID: " + id);
-			System.out.println("File Url: " + htmlUrl);
-			downloadAndResolveFile(id, htmlUrl, query);
-
-			// System.out.println("=====================");
-			// System.out.println("Multi-threading start");
-			// System.out.println("=====================");
-
-			// ExecutorService executor = Executors.newFixedThreadPool(NUMBER_THREADS);
-
-			// for (int i = 0; i < NUMBER_CORE; i++) {
-			// String htmlUrl = data.remove();
-			// id = id + 1;
-			// System.out.println("id: " + id);
-			// System.out.println("html url: " + htmlUrl);
-			// Runnable worker = new RunnableResolver(id, htmlUrl, queries);
-			// executor.execute(worker);
-			// }
-
-			// executor.shutdown();
-			// // Wait until all threads are finish
-			// while (!executor.isTerminated()) {}
-
-			// System.out.println("===================");
-			// System.out.println("Multi-threading end");
-			// System.out.println("===================");
-
+		}
+		
+		logTimingStatistics();
+		System.out.println("===== Statistics about instances that we managed to resolve =====");
+		System.out.println("<id>: <Number of similar copies found>");
+		int total = 0;
+		for (Entry<Integer, Boolean> entry : Dedup.canonicalCopiesResolvable.entrySet()) {
+			if (!entry.getValue()) continue;
+			
+			System.out.println("=== " + entry.getKey() + " : " + Dedup.canonicalCopiesCount.get(entry.getKey()));
+			total += Dedup.canonicalCopiesCount.get(entry.getKey());
+		}
+		System.out.println("Total: " + total);
+		
+		System.out.println("Writing metadata to " + DATA_LOCATION + "metadata.csv");
+		System.out.println("\t\t and " + DATA_LOCATION + "metadata_locations.csv");
+		try (BufferedWriter writer = new BufferedWriter(new FileWriter(DATA_LOCATION + "metadata.csv"))) {
+			for (Entry<Integer, Boolean> entry : Dedup.canonicalCopiesResolvable.entrySet()) {
+				if (!entry.getValue()) continue;
+				
+				writer.write(entry.getKey() + "," + Dedup.canonicalCopiesCount.get(entry.getKey()) );
+				
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+			System.out.println("Unable to write metadata ...");
+		}
+		
+		try (BufferedWriter writer = new BufferedWriter(new FileWriter(DATA_LOCATION + "metadata_locations.csv"))) {
+			for (Entry<Integer, Boolean> entry : Dedup.canonicalCopiesResolvable.entrySet()) {
+				if (!entry.getValue()) continue;
+				
+				int i = 0;
+				for (String url : Dedup.canonicalCopiesUrl.get(entry.getKey())) {
+					writer.write(entry.getKey() + "," + i + "," + url + "\n");
+					i++;
+				}
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+			System.out.println("Unable to write metadata ...");
 		}
 
+	}
+
+	private static List<String> readLineByLine(String filePath) {
+		List<String> contentBuilder = new ArrayList<>();
+
+		try (Stream<String> stream = Files.lines(Paths.get(filePath), StandardCharsets.UTF_8)) {
+			stream.forEach(s -> contentBuilder.add(s));
+		} catch (IOException e) {
+			System.err.println("Unable to read due to IO exception" + e);
+			e.printStackTrace();
+		} catch (Exception e) {
+			System.err.println("Unable to read due to exception" + e);
+			e.printStackTrace();
+		}
+
+		return contentBuilder;
 	}
 
 	public static void downloadAndResolveFile(int id, String htmlUrl, Query query) {
 		boolean isDownloaded = downloadFile(htmlUrl, id);
-		if (!isDownloaded) return;
+		if (!isDownloaded)
+			return;
 
-		Optional<ResolvedFile> resolvedFileOpt = resolveFile(id, query);
-		if (resolvedFileOpt.isPresent()) {
-			ResolvedFile resolvedFile = resolvedFileOpt.get();
-			currentTime = Instant.now();
-			
-			logTimingStatistics();
-			
-			resolvedFile.setUrl(htmlUrl);
-			
-			System.out.println("URL: " + resolvedFile.getUrl());
-			System.out.println("Path to File: " + resolvedFile.getPathFile());
-			System.out.println("Line: " + resolvedFile.getLines());
-			System.out.println("Snippet Codes: ");
-			
-			List<String> codes = getSnippetCode(resolvedFile.getPathFile(), resolvedFile.getLines());
-			for (int j = 0; j < codes.size(); j++) {
-				System.out.println(codes.get(j));
+		String filePath = DATA_LOCATION + "files/" + id + ".txt";
+		List<String> lines = readLineByLine(filePath); // if fail due to some exception, will be empty
+		if (!lines.isEmpty() && Dedup.accept(id, htmlUrl, lines)) {
+			Optional<ResolvedFile> resolvedFileOpt = resolveFile(id, query);
+			if (resolvedFileOpt.isPresent()) {
+				ResolvedFile resolvedFile = resolvedFileOpt.get();
+				
+
+				resolvedFile.setUrl(htmlUrl);
+
+				if (debug) {
+					
+					logTimingStatistics();
+					System.out.println("URL: " + resolvedFile.getUrl());
+					System.out.println("Path to File: " + resolvedFile.getPathFile());
+					System.out.println("Line: " + resolvedFile.getLines());
+					System.out.println("Snippet Codes: ");
+				}
+
+				List<String> codes = getSnippetCode(resolvedFile.getPathFile(), resolvedFile.getLines());
+				if (debug) {
+					for (int j = 0; j < codes.size(); j++) {
+						System.out.println(codes.get(j));
+					}
+				}
+
+				resolvedFiles.add(resolvedFile);
+				
+				Dedup.indicateCanBeResolved(id);
+				
+				return;
 			}
-			
-			resolvedFiles.add(resolvedFile);
 		} else {
-			// move file from DATA_LOCATION to DATA_LOCATION_FAILED
+			// early return if this is a clone
+			if (debug) {
+				System.out.println("Clone-like: " + id + " url=" + htmlUrl);
+			}
+			System.out.println("# Types of usage we have seen so far (this is not necessarily an actual usage): " 
+					+ Dedup.resolvable);
+		}
+
+		// move file from DATA_LOCATION to DATA_LOCATION_FAILED
+		if (debug) {
 			String pathFile = new String(DATA_LOCATION + "files/" + id + ".txt");
 			new File(pathFile).renameTo(new File(DATA_LOCATION_FAILED + "files/" + id + ".txt"));
-			System.out.println("moving file");
 			
+			System.out.println("moving file");
+		} else {
+			String pathFile = new String(DATA_LOCATION + "files/" + id + ".txt");
+			new File(pathFile).delete(); // save space.
 		}
+
 	}
 
 	private static void logTimingStatistics() {
+		Instant currentTime = Instant.now();
 		long timeElapsed = Duration.between(start, currentTime).toMillis();
 		long minutes = (timeElapsed / 1000) / 60;
 		long seconds = (timeElapsed / 1000) % 60;
@@ -324,7 +393,7 @@ public class App {
 
 	private static Optional<ResolvedFile> resolveFile(int fileId, Query query) {
 
-		return resolve(query, new String(DATA_LOCATION + "files/" + fileId + ".txt"));
+		return resolve(query, DATA_LOCATION + "files/" + fileId + ".txt");
 
 	}
 
@@ -335,7 +404,6 @@ public class App {
 		List<Integer> lines = new ArrayList<Integer>();
 
 		ResolvedFile resolvedFile = new ResolvedFile(query, "", "", lines, snippetCodes);
-		// System.out.println();
 		try {
 			List<String> addedJars = getNeededJars(file);
 			for (int i = 0; i < addedJars.size(); i++) {
@@ -351,8 +419,7 @@ public class App {
 			}
 			StaticJavaParser.getConfiguration()
 					.setSymbolResolver(new JavaSymbolSolver(synchronizedTypeSolver.getTypeSolver()));
-			CompilationUnit cu;
-			cu = StaticJavaParser.parse(file);
+			CompilationUnit cu = StaticJavaParser.parse(file);
 
 			boolean isMethodMatch = false;
 			boolean isResolved = false;
@@ -360,69 +427,70 @@ public class App {
 
 			List<MethodCallExpr> methodCallExprs = cu.findAll(MethodCallExpr.class);
 			List<String> methodCallNames = new ArrayList<>();
-			List<String> closeMethodCallNames = new ArrayList<>(); // names that only differ because the FQN check failed
-			
-			
+			List<String> closeMethodCallNames = new ArrayList<>(); // names that only differ because the FQN check
+																	// failed
+
 			for (int j = 0; j < methodCallExprs.size(); j++) {
 				MethodCallExpr mce = methodCallExprs.get(j);
-				
+
 				methodCallNames.add(mce.getName().toString() + ":" + mce.getArguments().size());
-				
-				if (!mce.getName().toString().equals(query.getMethod()) 
+
+				if (!mce.getName().toString().equals(query.getMethod())
 						|| mce.getArguments().size() != query.getArguments().size()) {
 					// ignore if different name or different number of arguments
 					continue;
 				}
-				
+
 				isMethodMatch = true;
 				try {
 					ResolvedMethodDeclaration resolvedMethodDeclaration = mce.resolve();
-					
-					
+
 					String fullyQualifiedClassName = resolvedMethodDeclaration.getPackageName() + "."
 							+ resolvedMethodDeclaration.getClassName();
-					
+
 					// make some wild guesses
 					List<String> fullyQualifiedInterfaceNames = new ArrayList<>();
-					if (resolvedMethodDeclaration.declaringType().isClass() || resolvedMethodDeclaration.declaringType().isAnonymousClass()) {
-						List<ResolvedReferenceType> interfaces = resolvedMethodDeclaration.declaringType().asClass().getAllInterfaces();
+					if (resolvedMethodDeclaration.declaringType().isClass()
+							|| resolvedMethodDeclaration.declaringType().isAnonymousClass()) {
+						List<ResolvedReferenceType> interfaces = resolvedMethodDeclaration.declaringType().asClass()
+								.getAllInterfaces();
 						for (ResolvedReferenceType singleInterface : interfaces) {
-							String fullyQualifiedInterfaceMethodName = singleInterface.getQualifiedName() + "#" + mce.getNameAsString();
+							String fullyQualifiedInterfaceMethodName = singleInterface.getQualifiedName() + "#"
+									+ mce.getNameAsString();
 							fullyQualifiedInterfaceNames.add(fullyQualifiedInterfaceMethodName);
 						}
-					} else if (resolvedMethodDeclaration.declaringType().isInterface()){
-						List<ResolvedReferenceType> interfaces = resolvedMethodDeclaration.declaringType().asInterface().getAllInterfacesExtended();
+					} else if (resolvedMethodDeclaration.declaringType().isInterface()) {
+						List<ResolvedReferenceType> interfaces = resolvedMethodDeclaration.declaringType().asInterface()
+								.getAllInterfacesExtended();
 						for (ResolvedReferenceType singleInterface : interfaces) {
-							String fullyQualifiedInterfaceMethodName = singleInterface.getQualifiedName() + "#" + mce.getNameAsString();
+							String fullyQualifiedInterfaceMethodName = singleInterface.getQualifiedName() + "#"
+									+ mce.getNameAsString();
 							fullyQualifiedInterfaceNames.add(fullyQualifiedInterfaceMethodName);
 						}
-						
+
 					}
-					
-					
-					
+
 					isResolved = true;
-			
-					
+
 					// argument type match doesn't deal with generics very well, i think
 					// we'll just count the number of parameters then
-                    if (// isArgumentTypeMatch &&
-                    		fullyQualifiedClassName.equals(query.getFullyQualifiedClassName())
-                    		|| fullyQualifiedInterfaceNames.contains(query.getFullyQualifiedClassName())) {
-                    	
-                    	isFullyQualifiedClassNameMatch = true;
-                    	
-                        lines.add(mce.getBegin().get().line);
-                    } else {
-                    	closeMethodCallNames.add(fullyQualifiedClassName + "#" + mce.getNameAsString());
-                    	closeMethodCallNames.addAll(fullyQualifiedInterfaceNames);
-                    }
-                    
+					if (// isArgumentTypeMatch &&
+					fullyQualifiedClassName.equals(query.getFullyQualifiedClassName())
+							|| fullyQualifiedInterfaceNames.contains(query.getFullyQualifiedClassName())) {
+
+						isFullyQualifiedClassNameMatch = true;
+
+						lines.add(mce.getBegin().get().line);
+					} else {
+						closeMethodCallNames.add(fullyQualifiedClassName + "#" + mce.getNameAsString());
+						closeMethodCallNames.addAll(fullyQualifiedInterfaceNames);
+					}
+
 				} catch (UnsolvedSymbolException use) {
 					System.out.println("unsolvedSymbolException in resolveFile");
 					System.out.println("symbol is " + use.getName());
 				}
-			
+
 			}
 
 			if (!isMethodMatch) {
@@ -440,7 +508,7 @@ public class App {
 				resolvedFile.setPathFile(pathFile);
 				resolvedFile.setLines(lines);
 				resolvedFile.setCodes(getSnippetCode(pathFile, lines));
-				System.out.println("=== SUCCESS ===");
+				System.out.println("=== SUCCESSFULLY RETRIEVED EXAMPLE ===");
 				return Optional.of(resolvedFile);
 			} else {
 				return Optional.empty();
@@ -460,8 +528,8 @@ public class App {
 			System.out.println("Exception is " + runtimeException);
 			runtimeException.printStackTrace();
 			System.out.println("File location: " + pathFile);
-		} 
-		
+		}
+
 		return Optional.empty();
 	}
 
@@ -479,7 +547,7 @@ public class App {
 
 		int hashLocation = s.indexOf('#');
 		int leftBracketLocation = s.indexOf('(');
-        int rightBracketLocation = s.indexOf(')');
+		int rightBracketLocation = s.indexOf(')');
 		if (hashLocation == -1) {
 			System.out.println("Your query isn't accepted");
 			System.out.println("Query Format: " + "method");
@@ -490,14 +558,14 @@ public class App {
 		String fullyQualifiedClassName = s.substring(0, hashLocation);
 		String method = s.substring(hashLocation + 1, leftBracketLocation);
 		String args = s.substring(leftBracketLocation + 1, rightBracketLocation);
-		
+
 		List<String> arguments = new ArrayList<>();
 		if (!args.isEmpty()) {
-            String[] arr = args.split(",");
-            for (int i = 0; i < arr.length; i++) {
-            	arguments.add("DUMMY"); // ignore the parameter types
-            }
-        }
+			String[] arr = args.split(",");
+			for (int i = 0; i < arr.length; i++) {
+				arguments.add("DUMMY"); // ignore the parameter types
+			}
+		}
 
 		Query query = new Query();
 		query.setFullyQualifiedClassName(fullyQualifiedClassName);
@@ -512,7 +580,7 @@ public class App {
 		String folderName = query.getFullyQualifiedClassName() + "__" + query.getMethod();
 
 		makeFileResolutionLocation(folderName);
-		
+
 		makeFailedFilesLocation(folderName);
 
 		File jarFolder = new File(JARS_LOCATION);
@@ -584,26 +652,7 @@ public class App {
 		return download_url;
 	}
 
-	public static class URLRunnable implements Runnable {
-		private final String url;
 
-		URLRunnable(String query, int lower_bound, int upper_bound, int page, int per_page_limit) {
-			upper_bound++;
-			lower_bound--;
-			String size = lower_bound + ".." + upper_bound;
-			this.url = endpoint + "?" + PARAM_QUERY + "=" + query + "+in:file+language:java" + "&" + PARAM_PAGE + "="
-					+ page + "&" + PARAM_PER_PAGE + "=" + per_page_limit;
-		}
-
-		@Override
-		public void run() {
-			Response response = handleGithubRequestWithUrl(url);
-			JSONArray item = response.getItem();
-			// System.out.println("Request: " + response.getUrlRequest());
-			// System.out.println("Number items: " + item.length());
-			synchronizedData.addArray(item);
-		}
-	}
 
 	private static Response handleGithubRequestWithUrl(String url) {
 
@@ -629,6 +678,8 @@ public class App {
 					response.setItem(body.getJSONArray("items"));
 					response.setUrlRequest(request.toString());
 					response.setNextUrlRequest(getNextLinkFromResponse(request.header("Link")));
+				} else {
+					System.out.println("no 'next' header!");
 				}
 				response_ok = true;
 			} else if (responseCode == BAD_CREDENTIAL) {
@@ -677,10 +728,9 @@ public class App {
 		lower_bound--;
 		String size = lower_bound + ".." + upper_bound; // lower_bound < size < upper_bound
 
-		String url;
 		Response response = new Response();
 
-		url = endpoint + "?" + PARAM_QUERY + "=" + query + "+in:file+language:java" + "&" + PARAM_PAGE + "=" + page
+		String url = endpoint + "?" + PARAM_QUERY + "=" + query + "+in:file+language:java" + "&" + PARAM_PAGE + "=" + page
 				+ "&" + PARAM_PER_PAGE + "=" + per_page_limit;
 		response = handleGithubRequestWithUrl(url);
 
@@ -717,6 +767,12 @@ public class App {
 				}
 			}
 		}
+		if (next == null) {
+			System.out.println("printing stuff");
+			System.out.println("linkHeader is " + linkHeader);
+			throw new RuntimeException("Next url is null!");
+		}
+		
 		return next;
 	}
 
