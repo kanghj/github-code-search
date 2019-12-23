@@ -46,8 +46,10 @@ import com.github.javaparser.ParseProblemException;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.PackageDeclaration;
 import com.github.javaparser.ast.expr.Name;
+import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.resolution.UnsolvedSymbolException;
+import com.github.javaparser.resolution.declarations.ResolvedConstructorDeclaration;
 import com.github.javaparser.resolution.declarations.ResolvedMethodDeclaration;
 import com.github.javaparser.resolution.types.ResolvedReferenceType;
 import com.github.javaparser.symbolsolver.JavaSymbolSolver;
@@ -85,7 +87,7 @@ public class App {
 	// number of needed file to be resolved
 	private static int MAX_RESULT = 20; // 30 for local testing; set to 100 for server testing; then 500 for the
 										// final run
-	private static int MAX_TO_INSPECT = 10000; // should increase this number
+	private static int MAX_TO_INSPECT = 10000; // should increase this number eventually?
 
 	// folder location to save the downloaded files and jars
 	private static String DATA_LOCATION = "src/main/java/com/project/githubsearch/data/";
@@ -107,17 +109,39 @@ public class App {
 
 		int numberToRetrieve = Integer.parseInt(args[1]);
 		MAX_RESULT = numberToRetrieve; // not exactly. This is the number of unique candidate-usage that is wanted
+		MAX_TO_INSPECT = MAX_RESULT * 200;
 
 		synchronizedFeeder = new SynchronizedFeeder(args[2].split(","));
 
-		Query query = parseQuery(input);
+		List<String> additionalKeywordConstraint = new ArrayList<>();
+		// additional constraints may be useful for queries that are really hard to
+		// filter
+		// e.g. new String(bytes, Charset).
+		// "String" appears everywhere, but Charset doesn't
+		// hence having the charset constraint is useful as input to github!
+		if (args.length > 3) {
+			for (int i = 3; i < args.length; i++) {
+				additionalKeywordConstraint.add(args[i]);
+			}
+		}
+
+		Query query = parseQuery(input, additionalKeywordConstraint);
 
 		printQuery(query);
 
 		initUniqueFolderToSaveData(query);
 		start = Instant.now();
-		processQuery(query);
 
+		try (BufferedWriter writer = new BufferedWriter(new FileWriter(getLabelFilePath()))) {
+			writer.write("id" + "," + "label");
+			writer.write("\n");
+		} catch (IOException e) {
+
+			e.printStackTrace();
+			throw new RuntimeException(e);
+		}
+
+		processQuery(query);
 	}
 
 	private static List<String> getSnippetCode(String pathFile, List<Integer> lineNumbers) {
@@ -258,7 +282,6 @@ public class App {
 			e.printStackTrace();
 			System.out.println("Unable to write metadata ...");
 		}
-
 	}
 
 	private static List<String> readLineByLine(String filePath) {
@@ -297,12 +320,12 @@ public class App {
 					System.out.println("URL: " + resolvedFile.getUrl());
 					System.out.println("Path to File: " + resolvedFile.getPathFile());
 					System.out.println("Line: " + resolvedFile.getLines());
-					System.out.println("Snippet Codes: ");
+					System.out.println("Snippet Code: ");
 				}
 
 				List<String> codes = getSnippetCode(resolvedFile.getPathFile(), resolvedFile.getLines());
 				if (debug) {
-					for (int j = 0; j < codes.size(); j++) {
+					for (int j = 0; j < Math.min(codes.size(), 10); j++) {
 						System.out.println(codes.get(j));
 					}
 				}
@@ -311,8 +334,8 @@ public class App {
 
 				Dedup.indicateCanBeResolved(id);
 
-				// move file to directory such that the package name is respected. (usually
-				// useful for further analysis)
+				// move file to directory such that the package name is respected.
+				// (usually useful for further analysis)
 
 				String packageName = resolvedFile.getPackageName();
 				if (!packageName.isEmpty()) {
@@ -321,8 +344,13 @@ public class App {
 					String[] splitted = htmlUrl.split("/");
 					String className = splitted[splitted.length - 1];
 
-					new File(filePath).renameTo(
-							new File(DATA_LOCATION + id + "/" + packageDirectories + "/" + className + ".txt"));
+					File expectedFileLocation = new File(DATA_LOCATION + id + "/" + packageDirectories + "/");
+					if (!expectedFileLocation.exists()) {
+						expectedFileLocation.mkdirs();
+					}
+					new File(filePath).renameTo(new File(expectedFileLocation.toString() + "/" + className + ".txt"));
+					System.out.println("moved successfully obtained file to "
+							+ new File(expectedFileLocation.toString() + "/" + className + ".txt"));
 				}
 
 				return;
@@ -332,19 +360,25 @@ public class App {
 			if (debug) {
 				System.out.println("Clone-like: " + id + " url=" + htmlUrl);
 			}
-			System.out.println("# Types of usage we have seen so far (this is not necessarily an actual usage): "
-					+ Dedup.resolvable);
+			System.out.println(
+					"# Types of files we have seen so far (not necessarily actual usages): " + Dedup.resolvable);
 		}
 
 		// move file from DATA_LOCATION to DATA_LOCATION_FAILED
 		if (debug) {
 			new File(filePath).renameTo(new File(DATA_LOCATION_FAILED + "files/" + id + ".txt"));
 
-			System.out.println("moving unresolvable file");
+			System.out.println("moving non-matching file");
 		} else {
 			new File(filePath).delete(); // save space.
 		}
+		String oldFileDirectory = filePath.substring(0, filePath.lastIndexOf('/'));
+		new File(oldFileDirectory).delete();
 
+	}
+
+	private static String getLabelFilePath() {
+		return DATA_LOCATION + "labels.csv";
 	}
 
 	private static void logTimingStatistics() {
@@ -403,7 +437,7 @@ public class App {
 			fileOutputStream.getChannel().transferFrom(readableByteChannel, 0, Long.MAX_VALUE);
 			fileOutputStream.close();
 
-			System.out.println("download succeeded at " + pathFile);
+			System.out.println("download succeeded");
 
 			return Optional.of(pathFile);
 
@@ -452,102 +486,19 @@ public class App {
 			CompilationUnit cu = StaticJavaParser.parse(file);
 
 			Optional<PackageDeclaration> packageName = cu.getPackageDeclaration();
+//			System.out.println("package is " +packageName );
 			if (packageName.isPresent()) {
 				resolvedFile.setPackageName(packageName.map(packageDecl -> packageDecl.getNameAsString()).get());
+
+//				System.out.println("package name is " + resolvedFile.getPackageName());
 			}
 
-			boolean isMethodMatch = false;
-			boolean isResolved = false;
-			boolean isFullyQualifiedClassNameMatch = false;
-
+			if (query.isQueryForConstructor()) {
+				List<ObjectCreationExpr> objectCreationExprs = cu.findAll(ObjectCreationExpr.class);
+				return matchObjectCreationCalls(query, pathFile, lines, resolvedFile, objectCreationExprs);
+			}
 			List<MethodCallExpr> methodCallExprs = cu.findAll(MethodCallExpr.class);
-			List<String> methodCallNames = new ArrayList<>();
-			List<String> closeMethodCallNames = new ArrayList<>(); // names that only differ because the FQN check
-																	// failed
-
-			for (int j = 0; j < methodCallExprs.size(); j++) {
-				MethodCallExpr mce = methodCallExprs.get(j);
-
-				methodCallNames.add(mce.getName().toString() + ":" + mce.getArguments().size());
-
-				if (!mce.getName().toString().equals(query.getMethod())
-						|| mce.getArguments().size() != query.getArguments().size()) {
-					// ignore if different name or different number of arguments
-					continue;
-				}
-
-				isMethodMatch = true;
-				try {
-					ResolvedMethodDeclaration resolvedMethodDeclaration = mce.resolve();
-
-					String fullyQualifiedClassName = resolvedMethodDeclaration.getPackageName() + "."
-							+ resolvedMethodDeclaration.getClassName();
-
-					// make some wild guesses
-					List<String> fullyQualifiedInterfaceNames = new ArrayList<>();
-					if (resolvedMethodDeclaration.declaringType().isClass()
-							|| resolvedMethodDeclaration.declaringType().isAnonymousClass()) {
-						List<ResolvedReferenceType> interfaces = resolvedMethodDeclaration.declaringType().asClass()
-								.getAllInterfaces();
-						for (ResolvedReferenceType singleInterface : interfaces) {
-							String fullyQualifiedInterfaceMethodName = singleInterface.getQualifiedName() + "#"
-									+ mce.getNameAsString();
-							fullyQualifiedInterfaceNames.add(fullyQualifiedInterfaceMethodName);
-						}
-					} else if (resolvedMethodDeclaration.declaringType().isInterface()) {
-						List<ResolvedReferenceType> interfaces = resolvedMethodDeclaration.declaringType().asInterface()
-								.getAllInterfacesExtended();
-						for (ResolvedReferenceType singleInterface : interfaces) {
-							String fullyQualifiedInterfaceMethodName = singleInterface.getQualifiedName() + "#"
-									+ mce.getNameAsString();
-							fullyQualifiedInterfaceNames.add(fullyQualifiedInterfaceMethodName);
-						}
-
-					}
-
-					isResolved = true;
-
-					// argument type match doesn't deal with generics very well, i think
-					// we'll just count the number of parameters then
-					if (// isArgumentTypeMatch &&
-					fullyQualifiedClassName.equals(query.getFullyQualifiedClassName())
-							|| fullyQualifiedInterfaceNames.contains(query.getFullyQualifiedClassName())) {
-
-						isFullyQualifiedClassNameMatch = true;
-
-						lines.add(mce.getBegin().get().line);
-					} else {
-						closeMethodCallNames.add(fullyQualifiedClassName + "#" + mce.getNameAsString());
-						closeMethodCallNames.addAll(fullyQualifiedInterfaceNames);
-					}
-
-				} catch (UnsolvedSymbolException use) {
-					System.out.println("unsolvedSymbolException in resolveFile");
-					System.out.println("symbol is " + use.getName());
-				}
-
-			}
-
-			if (!isMethodMatch) {
-				System.out.println("No method match : " + query.getMethod());
-				System.out.println("names in file: " + methodCallNames);
-			}
-			if (!isResolved) {
-				System.out.println("Can't resolve :" + query.getMethod());
-			}
-			if (!isFullyQualifiedClassNameMatch) {
-				System.out.println("fully qualified names are " + closeMethodCallNames);
-			}
-
-			if (isMethodMatch && isResolved && isFullyQualifiedClassNameMatch) {
-				resolvedFile.setPathFile(pathFile);
-				resolvedFile.setLines(lines);
-				resolvedFile.setCodes(getSnippetCode(pathFile, lines));
-				System.out.println("=== SUCCESSFULLY RETRIEVED EXAMPLE ===");
-				return Optional.of(resolvedFile);
-			} else {
-				return Optional.empty();
-			}
+			return matchMethodCalls(query, pathFile, lines, resolvedFile, methodCallExprs);
 
 		} catch (ParseProblemException parseProblemException) {
 			System.out.println("===== Unable to parse");
@@ -568,6 +519,167 @@ public class App {
 		return Optional.empty();
 	}
 
+	private static Optional<ResolvedFile> matchObjectCreationCalls(Query query, String pathFile, List<Integer> lines,
+			ResolvedFile resolvedFile, List<ObjectCreationExpr> ctorlExprs) {
+
+		boolean isMethodMatch = false;
+		boolean isResolved = false;
+
+		// HJ: for debugging
+		List<String> methodCallNames = new ArrayList<>();
+
+		for (int j = 0; j < ctorlExprs.size(); j++) {
+			ObjectCreationExpr mce = ctorlExprs.get(j);
+
+			methodCallNames.add(mce.getTypeAsString() + ":" + mce.getArguments().size());
+
+			if (!query.getFullyQualifiedClassName().contains(
+					mce.getTypeAsString().split("<")[0]) // don't want any generics "<T>" disrupting us 
+					|| mce.getArguments().size() != query.getArguments().size()) {
+				// ignore if different name or different number of arguments
+				continue;
+			}
+
+			isMethodMatch = true;
+			try {
+				ResolvedConstructorDeclaration resolvedMethodDeclaration = mce.resolve();
+
+				String fullyQualifiedCtor = resolvedMethodDeclaration.getPackageName() + "." + mce.getTypeAsString().split("<")[0];
+
+				if (fullyQualifiedCtor
+						.equals(query.getFullyQualifiedClassName())) {
+
+
+					lines.add(mce.getBegin().get().line);
+
+					isResolved = true;
+				} else {
+					System.out.println("failed to match " + fullyQualifiedCtor + " against " + query.getFullyQualifiedClassName());
+				}
+
+			} catch (UnsolvedSymbolException use) {
+				System.out.println("unsolvedSymbolException in resolveFile");
+				System.out.println("symbol is " + use.getName());
+			}
+
+		}
+
+		if (!isMethodMatch) {
+			System.out.println("No method match : " + query.getFullyQualifiedClassName());
+			System.out.println("names in file: " + methodCallNames);
+		}
+		if (!isResolved) {
+			System.out.println("Can't resolve : " + query.getFullyQualifiedClassName());
+		}
+
+		if (isMethodMatch && isResolved) {
+			resolvedFile.setPathFile(pathFile);
+			resolvedFile.setLines(lines);
+			resolvedFile.setCodes(getSnippetCode(pathFile, lines));
+			System.out.println("=== SUCCESSFULLY RETRIEVED EXAMPLE ===");
+			return Optional.of(resolvedFile);
+		} else {
+			return Optional.empty();
+		}
+	}
+
+	private static Optional<ResolvedFile> matchMethodCalls(Query query, String pathFile, List<Integer> lines,
+			ResolvedFile resolvedFile, List<MethodCallExpr> methodCallExprs) {
+
+		boolean isMethodMatch = false;
+		boolean isResolved = false;
+		boolean isFullyQualifiedClassNameMatch = false;
+
+		// HJ: for debugging
+		List<String> methodCallNames = new ArrayList<>();
+		List<String> closeMethodCallNames = new ArrayList<>(); // names that only differ because the FQN check
+																// failed
+
+		for (int j = 0; j < methodCallExprs.size(); j++) {
+			MethodCallExpr mce = methodCallExprs.get(j);
+
+			methodCallNames.add(mce.getName().toString() + ":" + mce.getArguments().size());
+
+			if (!mce.getName().toString().equals(query.getMethod())
+					|| mce.getArguments().size() != query.getArguments().size()) {
+				// ignore if different name or different number of arguments
+				continue;
+			}
+
+			isMethodMatch = true;
+			try {
+				ResolvedMethodDeclaration resolvedMethodDeclaration = mce.resolve();
+
+				String fullyQualifiedClassName = resolvedMethodDeclaration.getPackageName() + "."
+						+ resolvedMethodDeclaration.getClassName();
+
+				// make some wild guesses
+				List<String> fullyQualifiedInterfaceNames = new ArrayList<>();
+				if (resolvedMethodDeclaration.declaringType().isClass()
+						|| resolvedMethodDeclaration.declaringType().isAnonymousClass()) {
+					List<ResolvedReferenceType> interfaces = resolvedMethodDeclaration.declaringType().asClass()
+							.getAllInterfaces();
+					for (ResolvedReferenceType singleInterface : interfaces) {
+						String fullyQualifiedInterfaceMethodName = singleInterface.getQualifiedName() + "#"
+								+ mce.getNameAsString();
+						fullyQualifiedInterfaceNames.add(fullyQualifiedInterfaceMethodName);
+					}
+				} else if (resolvedMethodDeclaration.declaringType().isInterface()) {
+					List<ResolvedReferenceType> interfaces = resolvedMethodDeclaration.declaringType().asInterface()
+							.getAllInterfacesExtended();
+					for (ResolvedReferenceType singleInterface : interfaces) {
+						String fullyQualifiedInterfaceMethodName = singleInterface.getQualifiedName() + "#"
+								+ mce.getNameAsString();
+						fullyQualifiedInterfaceNames.add(fullyQualifiedInterfaceMethodName);
+					}
+
+				}
+
+				isResolved = true;
+
+				// argument type match doesn't deal with generics very well, i think
+				// we'll just count the number of parameters then
+				if (// isArgumentTypeMatch &&
+				fullyQualifiedClassName.equals(query.getFullyQualifiedClassName())
+						|| fullyQualifiedInterfaceNames.contains(query.getFullyQualifiedClassName())) {
+
+					isFullyQualifiedClassNameMatch = true;
+
+					lines.add(mce.getBegin().get().line);
+				} else {
+					closeMethodCallNames.add(fullyQualifiedClassName + "#" + mce.getNameAsString());
+					closeMethodCallNames.addAll(fullyQualifiedInterfaceNames);
+				}
+
+			} catch (UnsolvedSymbolException use) {
+				System.out.println("unsolvedSymbolException in resolveFile");
+				System.out.println("symbol is " + use.getName());
+			}
+
+		}
+
+		if (!isMethodMatch) {
+			System.out.println("No method match : " + query.getMethod());
+			System.out.println("names in file: " + methodCallNames);
+		}
+		if (!isResolved) {
+			System.out.println("Can't resolve :" + query.getMethod());
+		}
+		if (!isFullyQualifiedClassNameMatch) {
+			System.out.println("fully qualified names are " + closeMethodCallNames);
+		}
+
+		if (isMethodMatch && isResolved && isFullyQualifiedClassNameMatch) {
+			resolvedFile.setPathFile(pathFile);
+			resolvedFile.setLines(lines);
+			resolvedFile.setCodes(getSnippetCode(pathFile, lines));
+			System.out.println("=== SUCCESSFULLY RETRIEVED EXAMPLE ===");
+			return Optional.of(resolvedFile);
+		} else {
+			return Optional.empty();
+		}
+	}
+
 	private static void printQuery(Query query) {
 		System.out.println("============");
 		System.out.println("Your Queries");
@@ -577,7 +689,7 @@ public class App {
 
 	}
 
-	private static Query parseQuery(String s) {
+	private static Query parseQuery(String s, List<String> additionalKeywordConstraint) {
 		s = s.replace(" ", "");
 
 		int hashLocation = s.indexOf('#');
@@ -606,13 +718,14 @@ public class App {
 		query.setFullyQualifiedClassName(fullyQualifiedClassName);
 		query.setMethod(method);
 		query.setArguments(arguments);
-
+		query.setAdditionalKeywords(additionalKeywordConstraint);
 		return query;
 	}
 
 	private static void initUniqueFolderToSaveData(Query query) {
 
-		String folderName = query.getFullyQualifiedClassName() + "__" + query.getMethod();
+		String folderName = query.getFullyQualifiedClassName() + "__" + query.getMethod() + "__"
+				+ query.getArguments().size();
 
 		makeFileResolutionLocation(folderName);
 
