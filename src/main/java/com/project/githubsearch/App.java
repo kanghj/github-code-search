@@ -20,6 +20,7 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map.Entry;
@@ -102,9 +103,10 @@ public class App {
 
 	private static Instant start;
 
-	public final static boolean debug = true;
+	public final static boolean debug = false;
 
 	public static void main(String[] args) {
+		System.out.println("args: " + Arrays.toString(args));
 		String input = args[0];
 
 		int numberToRetrieve = Integer.parseInt(args[1]);
@@ -142,6 +144,8 @@ public class App {
 		}
 
 		processQuery(query);
+		
+		System.out.println("args: " + Arrays.toString(args));
 	}
 
 	private static List<String> getSnippetCode(String pathFile, List<Integer> lineNumbers) {
@@ -213,19 +217,23 @@ public class App {
 
 			while (!data.isEmpty()) {
 				String htmlUrl = data.remove();
-				System.out.println();
 				id++;
-				if (debug) {
-					System.out.println("ID: " + id);
-					System.out.println("File Url: " + htmlUrl);
-				} else {
-					if (id % 50 == 0) {
-						logTimingStatistics();
-						System.out.println("ID: " + id);
 
-					}
+				System.out.println("ID: " + id);
+				if (debug) {
+					System.out.println("\tFile Url: " + htmlUrl);
+				} 
+				if (id % 50 == 0) {
+					logTimingStatistics();
 				}
-				downloadAndResolveFile(id, htmlUrl, query);
+				
+				try {
+					downloadAndResolveFile(id, htmlUrl, query);
+				} catch (IOException e) {
+					e.printStackTrace();
+					throw new RuntimeException(e);
+
+				}
 
 				if (resolvedFiles.getResolvedFiles().size() >= MAX_RESULT && id >= MAX_TO_INSPECT) {
 					break;
@@ -244,7 +252,8 @@ public class App {
 			System.out.println("=== " + entry.getKey() + " : " + Dedup.canonicalCopiesCount.get(entry.getKey()));
 			total += Dedup.canonicalCopiesCount.get(entry.getKey());
 		}
-		System.out.println("Total: " + total);
+		System.out.println("Total files: " + total);
+		System.out.println("Total types of files: " + Dedup.canonicalCopiesResolvable.size());
 
 		String metadataDirectory = DATA_LOCATION + "metadata/";
 		if (!new File(metadataDirectory).exists()) {
@@ -300,7 +309,7 @@ public class App {
 		return contentBuilder;
 	}
 
-	public static void downloadAndResolveFile(int id, String htmlUrl, Query query) {
+	public static void downloadAndResolveFile(int id, String htmlUrl, Query query) throws IOException {
 		Optional<String> filePathOpt = downloadFile(htmlUrl, id);
 		if (!filePathOpt.isPresent())
 			return;
@@ -317,10 +326,10 @@ public class App {
 
 				if (debug) {
 					logTimingStatistics();
-					System.out.println("URL: " + resolvedFile.getUrl());
-					System.out.println("Path to File: " + resolvedFile.getPathFile());
-					System.out.println("Line: " + resolvedFile.getLines());
-					System.out.println("Snippet Code: ");
+					System.out.println("\tURL: " + resolvedFile.getUrl());
+					System.out.println("\tPath to File: " + resolvedFile.getPathFile());
+					System.out.println("\tLine: " + resolvedFile.getLines());
+					System.out.println("\tSnippet Code: ");
 				}
 
 				List<String> codes = getSnippetCode(resolvedFile.getPathFile(), resolvedFile.getLines());
@@ -348,8 +357,11 @@ public class App {
 					if (!expectedFileLocation.exists()) {
 						expectedFileLocation.mkdirs();
 					}
-					new File(filePath).renameTo(new File(expectedFileLocation.toString() + "/" + className + ".txt"));
-					System.out.println("moved successfully obtained file to "
+					Files.copy(new File(filePath).toPath(),
+							new File(expectedFileLocation.toString() + "/" + className + ".txt").toPath());
+					new File(filePath)
+							.renameTo(new File(DATA_LOCATION + "files" + "/" + id + "." + className + ".txt"));
+					System.out.println("\tmoved file to "
 							+ new File(expectedFileLocation.toString() + "/" + className + ".txt"));
 				}
 
@@ -358,23 +370,30 @@ public class App {
 		} else {
 			// early return if this is a clone
 			if (debug) {
-				System.out.println("Clone-like: " + id + " url=" + htmlUrl);
+				System.out.println("\t\tClone-like: " + id + " url=" + htmlUrl);
+				
+			} else {
+				System.out.println("\t\tClone-like");
 			}
-			System.out.println(
-					"# Types of files we have seen so far (not necessarily actual usages): " + Dedup.resolvable);
+
 		}
 
 		// move file from DATA_LOCATION to DATA_LOCATION_FAILED
 		if (debug) {
 			new File(filePath).renameTo(new File(DATA_LOCATION_FAILED + "files/" + id + ".txt"));
 
-			System.out.println("moving non-matching file");
+			System.out.println("\tmoving non-matching file");
 		} else {
 			new File(filePath).delete(); // save space.
 		}
 		String oldFileDirectory = filePath.substring(0, filePath.lastIndexOf('/'));
 		new File(oldFileDirectory).delete();
 
+		int everyXtimes = debug ? 10 : 50;
+		if (id % everyXtimes == 0) {
+			System.out.println(
+					"# Types of file-level unique instances we have seen so far (not necessarily actual API usages): " + Dedup.resolvable);
+		}
 	}
 
 	private static String getLabelFilePath() {
@@ -387,24 +406,7 @@ public class App {
 		long minutes = (timeElapsed / 1000) / 60;
 		long seconds = (timeElapsed / 1000) % 60;
 		long ms = (timeElapsed % 1000);
-		System.out.println("Elapsed time from start: " + minutes + " minutes " + seconds + " seconds " + ms + "ms");
-	}
-
-	public static class RunnableResolver implements Runnable {
-		private final int id;
-		private final String htmlUrl;
-		private final Query query;
-
-		RunnableResolver(int id, String htmlUrl, Query query) {
-			this.id = id;
-			this.htmlUrl = htmlUrl;
-			this.query = query;
-		}
-
-		@Override
-		public void run() {
-			downloadAndResolveFile(id, htmlUrl, query);
-		}
+		System.out.println("\tElapsed time from start: " + minutes + " minutes " + seconds + " seconds " + ms + "ms");
 	}
 
 	private static Optional<String> downloadFile(String htmlUrl, int fileId) {
@@ -431,13 +433,13 @@ public class App {
 				}
 			}
 
-			System.out.println("download to " + pathFile);
+			System.out.print("download to " + pathFile + " ..");
 
 			FileOutputStream fileOutputStream = new FileOutputStream(pathFile);
 			fileOutputStream.getChannel().transferFrom(readableByteChannel, 0, Long.MAX_VALUE);
 			fileOutputStream.close();
 
-			System.out.println("download succeeded");
+			System.out.println(" succeeded!");
 
 			return Optional.of(pathFile);
 
@@ -533,8 +535,9 @@ public class App {
 
 			methodCallNames.add(mce.getTypeAsString() + ":" + mce.getArguments().size());
 
-			if (!query.getFullyQualifiedClassName().contains(
-					mce.getTypeAsString().split("<")[0]) // don't want any generics "<T>" disrupting us 
+			if (!query.getFullyQualifiedClassName().contains(mce.getTypeAsString().split("<")[0]) // don't want any
+																									// generics "<T>"
+																									// disrupting us
 					|| mce.getArguments().size() != query.getArguments().size()) {
 				// ignore if different name or different number of arguments
 				continue;
@@ -544,39 +547,45 @@ public class App {
 			try {
 				ResolvedConstructorDeclaration resolvedMethodDeclaration = mce.resolve();
 
-				String fullyQualifiedCtor = resolvedMethodDeclaration.getPackageName() + "." + mce.getTypeAsString().split("<")[0];
+				String fullyQualifiedCtor = resolvedMethodDeclaration.getPackageName() + "."
+						+ mce.getTypeAsString().split("<")[0];
 
-				if (fullyQualifiedCtor
-						.equals(query.getFullyQualifiedClassName())) {
-
+				if (fullyQualifiedCtor.equals(query.getFullyQualifiedClassName())) {
 
 					lines.add(mce.getBegin().get().line);
 
 					isResolved = true;
 				} else {
-					System.out.println("failed to match " + fullyQualifiedCtor + " against " + query.getFullyQualifiedClassName());
+					if (debug) {
+						System.out.println(
+								"\t\tfailed to match " + fullyQualifiedCtor + " against " + query.getFullyQualifiedClassName());
+					}
 				}
 
 			} catch (UnsolvedSymbolException use) {
-				System.out.println("unsolvedSymbolException in resolveFile");
-				System.out.println("symbol is " + use.getName());
+				System.out.println("\t\tunsolvedSymbolException in resolveFile");
+				System.out.println("\t\tsymbol is " + use.getName());
 			}
 
 		}
 
 		if (!isMethodMatch) {
-			System.out.println("No method match : " + query.getFullyQualifiedClassName());
-			System.out.println("names in file: " + methodCallNames);
+			System.out.println("\t\tNo method match : " + query.getFullyQualifiedClassName());
+			if (debug) {
+				System.out.println("\t\tnames in file: " + methodCallNames);
+			}
 		}
 		if (!isResolved) {
-			System.out.println("Can't resolve : " + query.getFullyQualifiedClassName());
+			if (debug) {
+				System.out.println("\t\tCan't resolve : " + query.getFullyQualifiedClassName());
+			}
 		}
 
 		if (isMethodMatch && isResolved) {
 			resolvedFile.setPathFile(pathFile);
 			resolvedFile.setLines(lines);
 			resolvedFile.setCodes(getSnippetCode(pathFile, lines));
-			System.out.println("=== SUCCESSFULLY RETRIEVED EXAMPLE ===");
+			System.out.println("\t=== SUCCESSFULLY RETRIEVED EXAMPLE ===");
 			return Optional.of(resolvedFile);
 		} else {
 			return Optional.empty();
@@ -659,21 +668,23 @@ public class App {
 		}
 
 		if (!isMethodMatch) {
-			System.out.println("No method match : " + query.getMethod());
-			System.out.println("names in file: " + methodCallNames);
+			System.out.println("\t\tNo method match : " + query.getMethod());
+			if (debug) {
+				System.out.println("\t\t\tnames in file: " + methodCallNames);
+			}
 		}
 		if (!isResolved) {
-			System.out.println("Can't resolve :" + query.getMethod());
+			System.out.println("\t\tCan't resolve :" + query.getMethod());
 		}
 		if (!isFullyQualifiedClassNameMatch) {
-			System.out.println("fully qualified names are " + closeMethodCallNames);
+			System.out.println("\t\tFailed FQN check: Fully qualified names are " + closeMethodCallNames);
 		}
 
 		if (isMethodMatch && isResolved && isFullyQualifiedClassNameMatch) {
 			resolvedFile.setPathFile(pathFile);
 			resolvedFile.setLines(lines);
 			resolvedFile.setCodes(getSnippetCode(pathFile, lines));
-			System.out.println("=== SUCCESSFULLY RETRIEVED EXAMPLE ===");
+			System.out.println("\t=== SUCCESSFULLY RETRIEVED EXAMPLE ===");
 			return Optional.of(resolvedFile);
 		} else {
 			return Optional.empty();
@@ -726,6 +737,10 @@ public class App {
 
 		String folderName = query.getFullyQualifiedClassName() + "__" + query.getMethod() + "__"
 				+ query.getArguments().size();
+		
+		if (!query.getAdditionalKeywords().isEmpty()) {
+			folderName += query.getAdditionalKeywords();
+		}
 
 		makeFileResolutionLocation(folderName);
 
