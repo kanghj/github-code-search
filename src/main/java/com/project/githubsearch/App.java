@@ -91,6 +91,7 @@ public class App {
 	private static int MAX_TO_INSPECT = 10000; // should increase this number eventually?
 
 	// folder location to save the downloaded files and jars
+	// HJnotes : these are not actually constants....
 	private static String DATA_LOCATION = "src/main/java/com/project/githubsearch/data/";
 	private static String DATA_LOCATION_FAILED = "src/main/java/com/project/githubsearch/failed_data/";
 	private static final String JARS_LOCATION = "src/main/java/com/project/githubsearch/jars/";
@@ -195,7 +196,7 @@ public class App {
 		}
 
 		JSONArray item = response.getItem();
-		String nextUrlRequest = response.getNextUrlRequest();
+		Optional<String> nextUrlRequest = response.getNextUrlRequest();
 
 		Queue<String> data = new LinkedList<>();
 		for (int it = 0; it < item.length(); it++) {
@@ -207,7 +208,12 @@ public class App {
 
 		while (resolvedFiles.getResolvedFiles().size() < MAX_RESULT && id < MAX_TO_INSPECT) {
 
-			response = handleGithubRequestWithUrl(nextUrlRequest);
+			if (!nextUrlRequest.isPresent()) {
+				System.out.println("==== Ending EARLY because there is no next URL! ");
+				break;
+			}
+			
+			response = handleGithubRequestWithUrl(nextUrlRequest.get());
 			item = response.getItem();
 			nextUrlRequest = response.getNextUrlRequest();
 			for (int it = 0; it < item.length(); it++) {
@@ -785,8 +791,9 @@ public class App {
 		}
 
 		File files = new File(DATA_LOCATION + "files/");
-		if (!files.exists()) {
-			files.mkdir();
+		if (files.exists()) {
+			System.out.println("One should delete the old collected files before rerunning this");
+			throw new RuntimeException(DATA_LOCATION + "files/" + " seems to already exist. One should delete them before rerunning this.");
 		}
 	}
 
@@ -898,7 +905,7 @@ public class App {
 		return response;
 	}
 
-	private static String getNextLinkFromResponse(String linkHeader) {
+	private static Optional<String> getNextLinkFromResponse(String linkHeader) {
 
 		String next = null;
 
@@ -931,10 +938,11 @@ public class App {
 		if (next == null) {
 			System.out.println("printing stuff");
 			System.out.println("linkHeader is " + linkHeader);
-			throw new RuntimeException("Next url is null!");
+			System.out.println("Next url is null!");
+			return Optional.empty();
 		}
 
-		return next;
+		return Optional.of(next);
 	}
 
 	private static List<String> getNeededJars(File file) {

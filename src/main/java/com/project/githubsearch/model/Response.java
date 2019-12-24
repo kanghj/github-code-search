@@ -1,4 +1,6 @@
 package com.project.githubsearch.model;
+import java.util.Optional;
+
 import org.json.JSONArray;
 
 public class Response {
@@ -6,14 +8,14 @@ public class Response {
     private int total_count;
     private JSONArray item;
     private String url_request;
-    private String next_url_request;
+    private Optional<String> next_url_request;
 
     public Response() {
         this.code = 0;
         this.total_count = 0;
         this.item = new JSONArray();
         this.url_request = null;
-        this.next_url_request = null;
+        this.next_url_request = Optional.empty();
     }
     
     // getter
@@ -28,7 +30,7 @@ public class Response {
     public String getUrlRequest() {
         return this.url_request;
     }
-    public String getNextUrlRequest() {
+    public Optional<String> getNextUrlRequest() {
         return this.next_url_request;
     }
 
@@ -45,7 +47,7 @@ public class Response {
         this.total_count = total_count;
     }
 
-    public void setNextUrlRequest(String next_url_request) {
+    public void setNextUrlRequest(Optional<String> next_url_request) {
         this.next_url_request = next_url_request;
     }
 
