@@ -323,6 +323,7 @@ public class App {
 		String filePath = filePathOpt.get();
 
 		List<String> lines = readLineByLine(filePath); // if fail due to some exception, then it will be empty
+		boolean isClone = false;
 		if (!lines.isEmpty() && Dedup.accept(id, htmlUrl, lines)) {
 			Optional<ResolvedFile> resolvedFileOpt = resolveFile(filePath, query);
 			if (resolvedFileOpt.isPresent()) {
@@ -374,6 +375,7 @@ public class App {
 				return;
 			}
 		} else {
+			isClone = true;
 			// early return if this is a clone
 			if (debug) {
 				System.out.println("\t\tClone-like: " + id + " url=" + htmlUrl);
@@ -382,15 +384,19 @@ public class App {
 				System.out.println("\t\tClone-like");
 			}
 
+			
 		}
 
 		// move file from DATA_LOCATION to DATA_LOCATION_FAILED
 		if (debug) {
-			new File(filePath).renameTo(new File(DATA_LOCATION_FAILED + "files/" + id + ".txt"));
-
 			System.out.println("\tmoving non-matching file");
+			new File(filePath).renameTo(new File(DATA_LOCATION_FAILED + "files/" + id + ".txt"));
 		} else {
-			new File(filePath).delete(); // save space.
+			if (isClone) {
+				new File(filePath).delete(); // save space.
+			} else {
+				new File(filePath).renameTo(new File(DATA_LOCATION_FAILED + "files/" + id + ".txt"));
+			}
 		}
 		String oldFileDirectory = filePath.substring(0, filePath.lastIndexOf('/'));
 		new File(oldFileDirectory).delete();
