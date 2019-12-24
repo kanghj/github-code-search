@@ -1,5 +1,9 @@
 ## Github Code Search
-A java application to search an example of a java code
+A fork of mhilmiasyrofi/github-code-search.
+Several modifications were made for my own ease-of-use. The queries and github access tokens are now passed in as command line arguments.
+We only perform one query for each run, but more keywords can be added to the search query as needed.
+
+A deduplication process is performed for performance reasons. 
 
 ## Prerequisite
 
@@ -9,13 +13,7 @@ A java application to search an example of a java code
 
 ## Getting Started
 
-First, you should set your OAuth token into an environment variable, like:
-```
-export GITHUB_AUTH_TOKEN_1=xxxxxxx
-export GITHUB_AUTH_TOKEN_2=xxxxxxx
-export GITHUB_AUTH_TOKEN_3=xxxxxxx
-```
-Visit this [link](https://github.com/settings/tokens) to create it. If you only have one token, please write the token in each env variable. It will works also :)
+Visit this [link](https://github.com/settings/tokens) to create a github access token. 
 
 
 ## How to Run
@@ -25,5 +23,15 @@ Visit this [link](https://github.com/settings/tokens) to create it. If you only 
 
 mvn clean compile assembly:single
 
-java -cp target/github-code-search-1.0-SNAPSHOT-jar-with-dependencies.jar com.project.githubsearch.App
 ```
+
+
+
+java -cp target/github-code-search-1.0-SNAPSHOT-jar-with-dependencies.jar com.project.githubsearch.App "java.io.ByteArrayOutputStream#toByteArray()" <# types of files> <access token>
+
+`# types of files` are the number of unique source files you expect to receive. It is expected that github's search results returns code clones, 
+but clones of already-seen files are uninteresting so these are discarded. The total number of clones we see for each unique file is counted.
+
+If the results are too broad, further keywords can be added to the search query. Note that these keywords are treated directly as text, i.e. they are neither type-resolved nor a guarantee that they appear in the search results. We simply pass them into Github's search, which is a black-box to us.
+
+

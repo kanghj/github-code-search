@@ -406,7 +406,7 @@ public class App {
 		long minutes = (timeElapsed / 1000) / 60;
 		long seconds = (timeElapsed / 1000) % 60;
 		long ms = (timeElapsed % 1000);
-		System.out.println("\tElapsed time from start: " + minutes + " minutes " + seconds + " seconds " + ms + "ms");
+		System.out.println("\tTotal elapsed time: " + minutes + " minutes " + seconds + " seconds " + ms + "ms");
 	}
 
 	private static Optional<String> downloadFile(String htmlUrl, int fileId) {
@@ -433,7 +433,7 @@ public class App {
 				}
 			}
 
-			System.out.print("download to " + pathFile + " ..");
+			System.out.print("\tdownload to " + pathFile + " ..");
 
 			FileOutputStream fileOutputStream = new FileOutputStream(pathFile);
 			fileOutputStream.getChannel().transferFrom(readableByteChannel, 0, Long.MAX_VALUE);
@@ -661,8 +661,8 @@ public class App {
 				}
 
 			} catch (UnsolvedSymbolException use) {
-				System.out.println("unsolvedSymbolException in resolveFile");
-				System.out.println("symbol is " + use.getName());
+				System.out.println("\t\tunsolvedSymbolException in resolveFile");
+				System.out.println("\t\tsymbol is " + use.getName());
 			}
 
 		}
