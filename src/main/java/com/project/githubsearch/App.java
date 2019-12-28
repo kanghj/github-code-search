@@ -801,6 +801,8 @@ public class App {
 			System.out.println("One should delete the old collected files before rerunning this");
 			throw new RuntimeException(DATA_LOCATION + "files/" + " seems to already exist. One should delete them before rerunning this.");
 		}
+		files.mkdirs();
+		
 	}
 
 	/**
