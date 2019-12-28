@@ -352,13 +352,13 @@ public class App {
 
 				// move file to directory such that the package name is respected.
 				// (usually useful for further analysis)
-
+				String[] splitted = htmlUrl.split("/");
+				String className = splitted[splitted.length - 1];
 				String packageName = resolvedFile.getPackageName();
 				if (!packageName.isEmpty()) {
 					String packageDirectories = packageName.replaceAll("\\.", "/");
 
-					String[] splitted = htmlUrl.split("/");
-					String className = splitted[splitted.length - 1];
+					
 
 					File expectedFileLocation = new File(DATA_LOCATION + id + "/" + packageDirectories + "/");
 					if (!expectedFileLocation.exists()) {
@@ -370,6 +370,11 @@ public class App {
 							.renameTo(new File(DATA_LOCATION + "files" + "/" + id + "." + className + ".txt"));
 					System.out.println("\tmoved file to "
 							+ new File(expectedFileLocation.toString() + "/" + className + ".txt"));
+				} else {
+					// no package
+					Files.copy(new File(filePath).toPath(),
+							new File(DATA_LOCATION + "files" + "/" + id + "." + className + ".txt").toPath());
+					
 				}
 
 				return;
