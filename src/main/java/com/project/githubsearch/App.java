@@ -72,6 +72,7 @@ public class App {
 	private static final String PARAM_QUERY = "q"; //$NON-NLS-1$
 	private static final String PARAM_PAGE = "page"; //$NON-NLS-1$
 	private static final String PARAM_PER_PAGE = "per_page"; //$NON-NLS-1$
+	private static final String PARAM_SORT = "sort";
 
 	// links from the response header
 	private static final String META_REL = "rel"; //$NON-NLS-1$
@@ -113,17 +114,22 @@ public class App {
 		int numberToRetrieve = Integer.parseInt(args[1]);
 		MAX_RESULT = numberToRetrieve; // not exactly. This is the number of unique candidate-usage that is wanted
 		MAX_TO_INSPECT = MAX_RESULT * 200;
+		
+		System.out.println("Maximum files to inspect=" + MAX_TO_INSPECT);
 
 		synchronizedFeeder = new SynchronizedFeeder(args[2].split(","));
-
+		
+		boolean isPartitionedBySize = Boolean.parseBoolean(args[3]); // true if we want to split up the queries by size 
+		
+		
 		List<String> additionalKeywordConstraint = new ArrayList<>();
 		// additional constraints may be useful for queries that are really hard to
 		// filter
 		// e.g. new String(bytes, Charset).
 		// "String" appears everywhere, but Charset doesn't
 		// hence having the charset constraint is useful as input to github!
-		if (args.length > 3) {
-			for (int i = 3; i < args.length; i++) {
+		if (args.length > 4) {
+			for (int i = 4; i < args.length; i++) {
 				additionalKeywordConstraint.add(args[i]);
 			}
 		}
@@ -132,7 +138,7 @@ public class App {
 
 		printQuery(query);
 
-		initUniqueFolderToSaveData(query);
+		initUniqueFolderToSaveData(query, isPartitionedBySize);
 		start = Instant.now();
 
 		try (BufferedWriter writer = new BufferedWriter(new FileWriter(getLabelFilePath()))) {
@@ -144,9 +150,9 @@ public class App {
 			throw new RuntimeException(e);
 		}
 
-		processQuery(query);
+		processQuery(query, isPartitionedBySize);
 		
-		System.out.println("args: " + Arrays.toString(args));
+		System.out.println("args were: " + Arrays.toString(args));
 	}
 
 	private static List<String> getSnippetCode(String pathFile, List<Integer> lineNumbers) {
@@ -179,43 +185,38 @@ public class App {
 		return codes;
 	}
 
-	private static void processQuery(Query query) {
+	private static void processQuery(Query query, boolean isSplitBySize) {
 
 		String queryStr = query.toStringRequest();
 
-		int lowerBound, upperBound, page, perPageLimit;
-		lowerBound = 0;
-		upperBound = 384000;
+		int lowerBound = 0, upperBound = 100, page, perPageLimit;
+	
 		page = 1;
 		perPageLimit = 30;
 
-		Response response = handleCustomGithubRequest(queryStr, lowerBound, upperBound, page, perPageLimit);
-		if (response.getTotalCount() == 0) {
-			System.out.println("No item match with the query");
-			return;
-		}
-
-		JSONArray item = response.getItem();
-		Optional<String> nextUrlRequest = response.getNextUrlRequest();
-
-		Queue<String> data = new LinkedList<>();
-		for (int it = 0; it < item.length(); it++) {
-			JSONObject instance = new JSONObject(item.get(it).toString());
-			data.add(instance.getString("html_url"));
-		}
-
 		int id = 0;
+		Optional<String> nextUrlRequest = Optional.empty();
 
 		while (resolvedFiles.getResolvedFiles().size() < MAX_RESULT && id < MAX_TO_INSPECT) {
 
+			Response response;
 			if (!nextUrlRequest.isPresent()) {
-				System.out.println("==== Ending EARLY because there is no next URL! ");
-				break;
+				// moving on to the next size partition!
+				String size = lowerBound + ".." + upperBound;
+				response = handleCustomGithubRequest(queryStr, size, page, perPageLimit);
+				if (response.getTotalCount() == 0) {
+					System.out.println("No item match with the query");
+					return;
+				}
+			} else {
+				response = handleGithubRequestWithUrl(nextUrlRequest.get());
 			}
 			
-			response = handleGithubRequestWithUrl(nextUrlRequest.get());
-			item = response.getItem();
+			JSONArray item = response.getItem();
 			nextUrlRequest = response.getNextUrlRequest();
+	
+			Queue<String> data = new LinkedList<>();
+			
 			for (int it = 0; it < item.length(); it++) {
 				JSONObject instance = new JSONObject(item.get(it).toString());
 				data.add(instance.getString("html_url"));
@@ -374,6 +375,8 @@ public class App {
 					// no package
 					Files.copy(new File(filePath).toPath(),
 							new File(DATA_LOCATION + "files" + "/" + id + "." + className + ".txt").toPath());
+					System.out.println("\tcopy file to "
+							+ new File(DATA_LOCATION + "files" + "/" + id + "." + className + ".txt").toPath());
 					
 				}
 
@@ -663,10 +666,8 @@ public class App {
 
 				isResolved = true;
 
-				// argument type match doesn't deal with generics very well, i think
-				// we'll just count the number of parameters then
-				if (// isArgumentTypeMatch &&
-				fullyQualifiedClassName.equals(query.getFullyQualifiedClassName())
+			
+				if (fullyQualifiedClassName.equals(query.getFullyQualifiedClassName())
 						|| fullyQualifiedInterfaceNames.contains(query.getFullyQualifiedClassName())) {
 
 					isFullyQualifiedClassNameMatch = true;
@@ -690,10 +691,10 @@ public class App {
 				System.out.println("\t\t\tnames in file: " + methodCallNames);
 			}
 		}
-		if (!isResolved) {
+		if (isMethodMatch && !isResolved) {
 			System.out.println("\t\tCan't resolve :" + query.getMethod());
 		}
-		if (!isFullyQualifiedClassNameMatch) {
+		if (isResolved && !isFullyQualifiedClassNameMatch) {
 			System.out.println("\t\tFailed FQN check: Fully qualified names are " + closeMethodCallNames);
 		}
 
@@ -750,7 +751,7 @@ public class App {
 		return query;
 	}
 
-	private static void initUniqueFolderToSaveData(Query query) {
+	private static void initUniqueFolderToSaveData(Query query, boolean isSplitBySize) {
 
 		String folderName = query.getFullyQualifiedClassName() + "__" + query.getMethod() + "__"
 				+ query.getArguments().size();
@@ -758,6 +759,7 @@ public class App {
 		if (!query.getAdditionalKeywords().isEmpty()) {
 			folderName += query.getAdditionalKeywords();
 		}
+		folderName += "_" + isSplitBySize;
 
 		makeFileResolutionLocation(folderName);
 
@@ -902,17 +904,14 @@ public class App {
 		return response;
 	}
 
-	private static Response handleCustomGithubRequest(String query, int lower_bound, int upper_bound, int page,
+	private static Response handleCustomGithubRequest(String query, String size, int page,
 			int per_page_limit) {
 		// The size range is exclusive
-		upper_bound++;
-		lower_bound--;
-		String size = lower_bound + ".." + upper_bound; // lower_bound < size < upper_bound
 
 		Response response = new Response();
 
-		String url = endpoint + "?" + PARAM_QUERY + "=" + query + "+in:file+language:java" + "&" + PARAM_PAGE + "="
-				+ page + "&" + PARAM_PER_PAGE + "=" + per_page_limit;
+		String url = endpoint + "?" + PARAM_QUERY + "=" + query + "+size=" + size + "+in:file+language:java" + "&" + PARAM_PAGE + "="
+				+ page + "&" + PARAM_PER_PAGE + "=" + per_page_limit +"&" + PARAM_SORT + "=indexed";
 		response = handleGithubRequestWithUrl(url);
 
 		return response;
