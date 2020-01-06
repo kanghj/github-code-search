@@ -636,51 +636,55 @@ public class App {
 			}
 
 			isMethodMatch = true;
+			List<String> fullyQualifiedInterfaceNames = new ArrayList<>();
+			String fullyQualifiedClassName = "";
 			try {
 				ResolvedMethodDeclaration resolvedMethodDeclaration = mce.resolve();
 
-				String fullyQualifiedClassName = resolvedMethodDeclaration.getPackageName() + "."
-						+ resolvedMethodDeclaration.getClassName();
+				fullyQualifiedClassName = resolvedMethodDeclaration.getPackageName() + "." + resolvedMethodDeclaration.getClassName();
 
 				// make some wild guesses
-				List<String> fullyQualifiedInterfaceNames = new ArrayList<>();
+				
 				if (resolvedMethodDeclaration.declaringType().isClass()
 						|| resolvedMethodDeclaration.declaringType().isAnonymousClass()) {
 					List<ResolvedReferenceType> interfaces = resolvedMethodDeclaration.declaringType().asClass()
 							.getAllInterfaces();
 					for (ResolvedReferenceType singleInterface : interfaces) {
-						String fullyQualifiedInterfaceMethodName = singleInterface.getQualifiedName() + "#"
-								+ mce.getNameAsString();
+						String fullyQualifiedInterfaceMethodName = singleInterface.getQualifiedName(); // + "#"+ mce.getNameAsString();
 						fullyQualifiedInterfaceNames.add(fullyQualifiedInterfaceMethodName);
 					}
 				} else if (resolvedMethodDeclaration.declaringType().isInterface()) {
 					List<ResolvedReferenceType> interfaces = resolvedMethodDeclaration.declaringType().asInterface()
 							.getAllInterfacesExtended();
 					for (ResolvedReferenceType singleInterface : interfaces) {
-						String fullyQualifiedInterfaceMethodName = singleInterface.getQualifiedName() + "#"
-								+ mce.getNameAsString();
+						String fullyQualifiedInterfaceMethodName = singleInterface.getQualifiedName(); // + "#" + mce.getNameAsString();
 						fullyQualifiedInterfaceNames.add(fullyQualifiedInterfaceMethodName);
 					}
 
 				}
 
 				isResolved = true;
-
-			
-				if (fullyQualifiedClassName.equals(query.getFullyQualifiedClassName())
-						|| fullyQualifiedInterfaceNames.contains(query.getFullyQualifiedClassName())) {
-
-					isFullyQualifiedClassNameMatch = true;
-
-					lines.add(mce.getBegin().get().line);
-				} else {
-					closeMethodCallNames.add(fullyQualifiedClassName + "#" + mce.getNameAsString());
-					closeMethodCallNames.addAll(fullyQualifiedInterfaceNames);
-				}
+	
 
 			} catch (UnsolvedSymbolException use) {
 				System.out.println("\t\tunsolvedSymbolException in resolveFile");
 				System.out.println("\t\tsymbol is " + use.getName());
+			}
+			
+			
+			if (fullyQualifiedClassName.equals(query.getFullyQualifiedClassName())
+					|| fullyQualifiedInterfaceNames.contains(query.getFullyQualifiedClassName())) {
+
+				isFullyQualifiedClassNameMatch = true;
+				lines.add(mce.getBegin().get().line);
+				
+			} else {
+				if (!fullyQualifiedClassName.isEmpty()) {
+					closeMethodCallNames.add(fullyQualifiedClassName + "#" + mce.getNameAsString());
+				}
+				for (String fullyQualifiedInterfaceName : fullyQualifiedInterfaceNames) {
+					closeMethodCallNames.add(fullyQualifiedInterfaceName + "#" + mce.getNameAsString());
+				}
 			}
 
 		}
