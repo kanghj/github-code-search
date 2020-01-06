@@ -197,23 +197,23 @@ public class App {
 		int id = 0;
 		Optional<String> nextUrlRequest = Optional.empty();
 
-		while (resolvedFiles.getResolvedFiles().size() < MAX_RESULT && id < MAX_TO_INSPECT) {
+		while (resolvedFiles.getResolvedFiles().size() < MAX_RESULT && id < MAX_TO_INSPECT && lowerBound < 250_000) {
 
 			Response response;
 			if (!nextUrlRequest.isPresent()) {
 				// moving on to the next size partition!
-				
 				page = 1;
 				
 				String size = lowerBound + ".." + upperBound;
 				response = handleCustomGithubRequest(queryStr, size, page, perPageLimit);
-				if (response.getTotalCount() == 0) {
-					System.out.println("No item match with the query");
-					return;
-				}
 				
 				lowerBound += 50;
 				upperBound += 50;
+				
+				if (response.getTotalCount() == 0) {
+					System.out.println("No item match with the query. Continuing");
+					continue;
+				}
 			} else {
 				response = handleGithubRequestWithUrl(nextUrlRequest.get());
 			}
