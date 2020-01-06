@@ -202,12 +202,18 @@ public class App {
 			Response response;
 			if (!nextUrlRequest.isPresent()) {
 				// moving on to the next size partition!
+				
+				page = 1;
+				
 				String size = lowerBound + ".." + upperBound;
 				response = handleCustomGithubRequest(queryStr, size, page, perPageLimit);
 				if (response.getTotalCount() == 0) {
 					System.out.println("No item match with the query");
 					return;
 				}
+				
+				lowerBound += 100;
+				upperBound += 100;
 			} else {
 				response = handleGithubRequestWithUrl(nextUrlRequest.get());
 			}
@@ -668,6 +674,10 @@ public class App {
 			} catch (UnsolvedSymbolException use) {
 				System.out.println("\t\tunsolvedSymbolException in resolveFile");
 				System.out.println("\t\tsymbol is " + use.getName());
+			} catch (java.lang.IllegalAccessError iae) {
+				System.out.println("\t!!! A shocking IllegalAccessError!");
+				iae.printStackTrace();
+				System.out.println("\t!!! Ignore it!");
 			}
 			
 			
@@ -875,7 +885,7 @@ public class App {
 				System.out.println("Github message: " + (new JSONObject(request.body())).getString("message"));
 				System.exit(-1);
 			} else if (responseCode == ABUSE_RATE_LIMITS) {
-				System.out.println("Abuse Rate Limits");
+				System.out.println("Received response code indicating Abuse Rate Limits");
 				// retry current progress after wait for a minute
 				String retryAfter = request.header("Retry-After");
 				try {
@@ -885,7 +895,7 @@ public class App {
 					} else {
 						sleepTime = new Integer(retryAfter).intValue();
 					}
-					System.out.println("Retry-After: " + sleepTime);
+					System.out.println("Retry-After: " + sleepTime + " seconds");
 					TimeUnit.SECONDS.sleep(sleepTime);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
@@ -914,8 +924,8 @@ public class App {
 
 		Response response = new Response();
 
-		String url = endpoint + "?" + PARAM_QUERY + "=" + query + "+size=" + size + "+in:file+language:java" + "&" + PARAM_PAGE + "="
-				+ page + "&" + PARAM_PER_PAGE + "=" + per_page_limit +"&" + PARAM_SORT + "=indexed";
+		String url = endpoint + "?" + PARAM_QUERY + "=" + query + "+size:" + size + "+in:file+language:java" + "&" + PARAM_PAGE + "="
+				+ page + "&" + PARAM_PER_PAGE + "=" + per_page_limit ;// +"&" + PARAM_SORT + "=indexed";
 		response = handleGithubRequestWithUrl(url);
 
 		return response;
