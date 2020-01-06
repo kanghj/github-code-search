@@ -189,7 +189,7 @@ public class App {
 
 		String queryStr = query.toStringRequest();
 
-		int lowerBound = 0, upperBound = 100, page, perPageLimit;
+		int lowerBound = 0, upperBound = 50, page, perPageLimit;
 	
 		page = 1;
 		perPageLimit = 30;
@@ -212,8 +212,8 @@ public class App {
 					return;
 				}
 				
-				lowerBound += 100;
-				upperBound += 100;
+				lowerBound += 50;
+				upperBound += 50;
 			} else {
 				response = handleGithubRequestWithUrl(nextUrlRequest.get());
 			}
