@@ -412,7 +412,7 @@ public class App {
 		int everyXtimes = debug ? 10 : 50;
 		if (id % everyXtimes == 0) {
 			System.out.println(
-					"# Types of file-level unique instances we have seen so far (not necessarily actual API usages): " + Dedup.resolvable);
+					"# Types of file-level unique instances we have seen so far (but not necessarily actual API usages): " + Dedup.resolvable);
 		}
 	}
 
@@ -453,7 +453,7 @@ public class App {
 				}
 			}
 
-			System.out.print("\tdownload to " + pathFile + " ..");
+			System.out.print("\tdownload to " + pathFile + " .. from " + htmlUrl);
 
 			FileOutputStream fileOutputStream = new FileOutputStream(pathFile);
 			fileOutputStream.getChannel().transferFrom(readableByteChannel, 0, Long.MAX_VALUE);
@@ -508,19 +508,18 @@ public class App {
 			CompilationUnit cu = StaticJavaParser.parse(file);
 
 			Optional<PackageDeclaration> packageName = cu.getPackageDeclaration();
-//			System.out.println("package is " +packageName );
 			if (packageName.isPresent()) {
 				resolvedFile.setPackageName(packageName.map(packageDecl -> packageDecl.getNameAsString()).get());
 
-//				System.out.println("package name is " + resolvedFile.getPackageName());
 			}
 
 			if (query.isQueryForConstructor()) {
 				List<ObjectCreationExpr> objectCreationExprs = cu.findAll(ObjectCreationExpr.class);
 				return matchObjectCreationCalls(query, pathFile, lines, resolvedFile, objectCreationExprs);
+			} else {
+				List<MethodCallExpr> methodCallExprs = cu.findAll(MethodCallExpr.class);
+				return matchMethodCalls(query, pathFile, lines, resolvedFile, methodCallExprs);
 			}
-			List<MethodCallExpr> methodCallExprs = cu.findAll(MethodCallExpr.class);
-			return matchMethodCalls(query, pathFile, lines, resolvedFile, methodCallExprs);
 
 		} catch (ParseProblemException parseProblemException) {
 			System.out.println("===== Unable to parse");
