@@ -696,6 +696,7 @@ public class App {
 		}
 		if (isResolved && !isFullyQualifiedClassNameMatch) {
 			System.out.println("\t\tFailed FQN check: Fully qualified names are " + closeMethodCallNames);
+			System.out.println("\t\t\tExpected name is " + query.getFullyQualifiedClassName());
 		}
 
 		if (isMethodMatch && isResolved && isFullyQualifiedClassNameMatch) {
