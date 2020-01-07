@@ -27,7 +27,7 @@ public class Dedup {
 	static int resolvable = 0;
 	
 	// threshold to be considered as clones
-	public static final float threshold = 0.95f;
+	public static final float threshold = 0.8f;
 	
 	public static List<String> stripComments(List<String> lines) {
 		// we know its java

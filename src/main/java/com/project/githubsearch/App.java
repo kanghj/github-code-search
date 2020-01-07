@@ -190,7 +190,7 @@ public class App {
 
 		String queryStr = query.toStringRequest();
 
-		int lowerBound = 0, upperBound = 50, page, perPageLimit;
+		int lowerBound = 0, upperBound = 200, page, perPageLimit;
 	
 		page = 1;
 		perPageLimit = 30;
@@ -209,8 +209,8 @@ public class App {
 				response = handleCustomGithubRequest(queryStr, size, page, perPageLimit);
 				
 			
-				lowerBound += 100;
-				upperBound += 100;
+				lowerBound += 200;
+				upperBound += 200;
 			
 				
 				if (response.getTotalCount() == 0) {
