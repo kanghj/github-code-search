@@ -119,7 +119,8 @@ public class App {
 
 		synchronizedFeeder = new SynchronizedFeeder(args[2].split(","));
 		
-		boolean isPartitionedBySize = Boolean.parseBoolean(args[3]); // true if we want to split up the queries by size 
+		boolean isPartitionedBySize = Boolean.parseBoolean(args[3]); // true if we want to split up the queries by size
+		System.out.println("partitioning by size =" + isPartitionedBySize);
 		
 		
 		List<String> additionalKeywordConstraint = new ArrayList<>();
@@ -207,8 +208,10 @@ public class App {
 				String size = lowerBound + ".." + upperBound;
 				response = handleCustomGithubRequest(queryStr, size, page, perPageLimit);
 				
-				lowerBound += 50;
-				upperBound += 50;
+			
+				lowerBound += 100;
+				upperBound += 100;
+			
 				
 				if (response.getTotalCount() == 0) {
 					System.out.println("No item match with the query. Continuing");
@@ -266,7 +269,7 @@ public class App {
 			total += Dedup.canonicalCopiesCount.get(entry.getKey());
 		}
 		System.out.println("Total files: " + total);
-		System.out.println("Total types of files: " + Dedup.canonicalCopiesResolvable.size());
+		System.out.println("Total types of files: " + Dedup.resolvable);
 
 		String metadataDirectory = DATA_LOCATION + "metadata/";
 		if (!new File(metadataDirectory).exists()) {
@@ -387,6 +390,8 @@ public class App {
 				}
 
 				return;
+			} else {
+				
 			}
 		} else {
 			isClone = true;
