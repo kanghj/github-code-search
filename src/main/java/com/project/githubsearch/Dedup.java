@@ -59,7 +59,17 @@ public class Dedup {
 		return numerator / denominator;
 	}
 	
-	public static boolean accept(int id, String url, List<String> linesOfCode) {
+	/**
+	 * Detect if is a clones of a previously seen piece of code.
+	 * starsOnRepo is updated to reflect the highest number of stars received by any clone of the canonical copy or itself.
+	 * @param id
+	 * @param url
+	 * @param linesOfCode
+	 * @param stars
+	 * @param starsOnRepo
+	 * @return
+	 */
+	public static boolean accept(int id, String url, List<String> linesOfCode, int stars, Map<Integer, Integer> starsOnRepo) {
 		linesOfCode = stripComments(linesOfCode);
 		
 		String codeAsStr = String.join(" ", linesOfCode);
@@ -72,6 +82,8 @@ public class Dedup {
 			if (intersectionRatio > threshold) {				
 				canonicalCopiesCount.put(key, canonicalCopiesCount.get(key) + 1);
 				canonicalCopiesUrl.get(key).add(url);
+				
+				starsOnRepo.put(key, Math.max(starsOnRepo.get(key), stars));
 				return false;
 			}
 		}
@@ -82,6 +94,8 @@ public class Dedup {
 		canonicalCopiesUrl.put(id, new HashSet<>());
 		canonicalCopiesUrl.get(id).add(url);
 		canonicalCopiesResolvable.put(id, false); // don't know yet
+		
+		starsOnRepo.put(id, stars);
 		return true;
 	}
 

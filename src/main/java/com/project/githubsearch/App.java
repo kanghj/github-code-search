@@ -21,8 +21,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Queue;
@@ -105,6 +107,9 @@ public class App {
 
 	private static Instant start;
 
+	
+	private static Map<Integer, Integer> starsOnRepo = new HashMap<>();
+	
 	public final static boolean debug = false;
 
 	public static void main(String[] args) {
@@ -190,7 +195,7 @@ public class App {
 
 		String queryStr = query.toStringRequest();
 
-		int lowerBound = 0, upperBound = 200, page, perPageLimit;
+		int lowerBound = 0, upperBound = 250, page, perPageLimit;
 	
 		page = 1;
 		perPageLimit = 30;
@@ -209,8 +214,8 @@ public class App {
 				response = handleCustomGithubRequest(queryStr, size, page, perPageLimit);
 				
 			
-				lowerBound += 200;
-				upperBound += 200;
+				lowerBound += 250;
+				upperBound += 250;
 			
 				
 				if (response.getTotalCount() == 0) {
@@ -226,9 +231,16 @@ public class App {
 	
 			Queue<String> data = new LinkedList<>();
 			
+			int stars = -1;
 			for (int it = 0; it < item.length(); it++) {
 				JSONObject instance = new JSONObject(item.get(it).toString());
+				
 				data.add(instance.getString("html_url"));
+				
+				JSONObject repo = instance.getJSONObject("repository");
+				
+				String repoUrl = repo.getString("url");
+				stars = fetchStarGazers(repoUrl);
 			}
 
 			while (!data.isEmpty()) {
@@ -244,7 +256,7 @@ public class App {
 				}
 				
 				try {
-					downloadAndResolveFile(id, htmlUrl, query);
+					downloadAndResolveFile(id, htmlUrl, query, stars);
 				} catch (IOException e) {
 					e.printStackTrace();
 					throw new RuntimeException(e);
@@ -278,6 +290,7 @@ public class App {
 
 		System.out.println("Writing metadata to " + metadataDirectory + "metadata.csv");
 		System.out.println("\t\t and " + metadataDirectory + "metadata_locations.csv");
+		System.out.println("\t\t and " + metadataDirectory + "metadata_stars.csv");
 		try (BufferedWriter writer = new BufferedWriter(new FileWriter(DATA_LOCATION + "metadata/metadata.csv"))) {
 			for (Entry<Integer, Boolean> entry : Dedup.canonicalCopiesResolvable.entrySet()) {
 				if (!entry.getValue())
@@ -307,6 +320,21 @@ public class App {
 			e.printStackTrace();
 			System.out.println("Unable to write metadata ...");
 		}
+		
+		try (BufferedWriter writer = new BufferedWriter(
+				new FileWriter(DATA_LOCATION + "metadata/metadata_stars.csv"))) {
+			for (Entry<Integer, Boolean> entry : Dedup.canonicalCopiesResolvable.entrySet()) {
+				if (!entry.getValue())
+					continue;
+
+				for (Entry<Integer, Integer> starEntry : starsOnRepo.entrySet()) {
+					writer.write(entry.getKey() + "," + starEntry.getValue() + "\n");
+				}
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+			System.out.println("Unable to write metadata ...");
+		}
 	}
 
 	private static List<String> readLineByLine(String filePath) {
@@ -325,7 +353,7 @@ public class App {
 		return contentBuilder;
 	}
 
-	public static void downloadAndResolveFile(int id, String htmlUrl, Query query) throws IOException {
+	public static void downloadAndResolveFile(int id, String htmlUrl, Query query, int stars) throws IOException {
 		Optional<String> filePathOpt = downloadFile(htmlUrl, id);
 		if (!filePathOpt.isPresent())
 			return;
@@ -334,7 +362,7 @@ public class App {
 
 		List<String> lines = readLineByLine(filePath); // if fail due to some exception, then it will be empty
 		boolean isClone = false;
-		if (!lines.isEmpty() && Dedup.accept(id, htmlUrl, lines)) {
+		if (!lines.isEmpty() && Dedup.accept(id, htmlUrl, lines, stars, starsOnRepo)) {
 			Optional<ResolvedFile> resolvedFileOpt = resolveFile(filePath, query);
 			if (resolvedFileOpt.isPresent()) {
 				ResolvedFile resolvedFile = resolvedFileOpt.get();
@@ -423,7 +451,7 @@ public class App {
 		int everyXtimes = debug ? 10 : 50;
 		if (id % everyXtimes == 0) {
 			System.out.println(
-					"# Types of file-level unique instances we have seen so far (but not necessarily actual API usages): " + Dedup.resolvable);
+					"# Types of instances, unique at the file-level, seen (note- not necessarily actual API usages): " + Dedup.resolvable);
 		}
 	}
 
@@ -508,10 +536,10 @@ public class App {
 					TypeSolver jarTypeSolver = JarTypeSolver.getJarTypeSolver(addedJars.get(i));
 					synchronizedTypeSolver.add(jarTypeSolver);
 				} catch (Exception e) {
-					System.out.println("=== Package corrupt! ===");
-					System.out.println("Corrupted jars: " + addedJars.get(i));
-					System.out.println("Please download the latest jar manually from maven repository!");
-					System.out.println("File location: " + file.toString());
+					System.out.println("\t! Package corrupt! !");
+					System.out.println("\t\tCorrupted jars: " + addedJars.get(i));
+					System.out.println("\t\tPlease download the latest jar manually from maven repository!");
+					System.out.println("\t\tFile location: " + file.toString());
 				}
 			}
 			StaticJavaParser.getConfiguration()
@@ -923,6 +951,66 @@ public class App {
 		return response;
 	}
 
+	private static int fetchStarGazers(String url) {
+
+		boolean response_ok = false;
+		int response = -1;
+		int responseCode;
+
+		// encode the space into %20
+		url = url.replace(" ", "%20");
+		GithubToken token = synchronizedFeeder.getAvailableGithubToken();
+
+		do {
+			HttpRequest request = HttpRequest.get(url, false).authorization("token " + token.getToken());
+			System.out.println();
+			System.out.println("Request: " + request);
+
+			responseCode = request.code();
+			if (responseCode == RESPONSE_OK) {
+				JSONObject body = new JSONObject(request.body());
+				response = body.getInt("stargazers_count");
+				response_ok = true;
+		
+			} else if (responseCode == BAD_CREDENTIAL) {
+				System.out.println("Authorization problem");
+				System.out.println("Please read the readme file!");
+				System.out.println("Github message: " + (new JSONObject(request.body())).getString("message"));
+				System.exit(-1);
+			} else if (responseCode == ABUSE_RATE_LIMITS) {
+				System.out.println("Received response code indicating Abuse Rate Limits");
+				// retry current progress after wait for a minute
+				String retryAfter = request.header("Retry-After");
+				try {
+					int sleepTime = 0; // wait for a while
+					if (retryAfter.isEmpty()) {
+						sleepTime = 1;
+					} else {
+						sleepTime = new Integer(retryAfter).intValue();
+					}
+					System.out.println("Retry-After: " + sleepTime + " seconds");
+					TimeUnit.SECONDS.sleep(sleepTime);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			} else if (responseCode == UNPROCESSABLE_ENTITY) {
+				System.out.println("Response Code: " + responseCode);
+				System.out.println("Unprocessable Entity: only the first 1000 search results are available");
+				System.out.println("See the documentation here: https://developer.github.com/v3/search/");
+			} else {
+				System.out.println("Response Code: " + responseCode);
+				System.out.println("Response Body: " + request.body());
+				System.out.println("Response Headers: " + request.headers());
+				System.exit(-1);
+			}
+
+		} while (!response_ok && responseCode != UNPROCESSABLE_ENTITY);
+
+		synchronizedFeeder.releaseToken(token);
+
+		return response;
+	}
+	
 	private static Response handleCustomGithubRequest(String query, String size, int page,
 			int per_page_limit) {
 		// The size range is exclusive
