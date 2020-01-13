@@ -762,6 +762,7 @@ public class App {
 		System.out.println("============");
 
 		System.out.println("Query " + ": " + query);
+		System.out.println("Additional keywords " + ": " + query.getAdditionalKeywords());
 
 	}
 
