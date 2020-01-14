@@ -942,7 +942,14 @@ public class App {
 				System.out.println("Response Code: " + responseCode);
 				System.out.println("Response Body: " + request.body());
 				System.out.println("Response Headers: " + request.headers());
-				System.exit(-1);
+				try {
+					int sleepTime = 60; // wait for a while
+				
+					System.out.println("Not sure what happened. So retry after: " + sleepTime + " seconds");
+					TimeUnit.SECONDS.sleep(sleepTime);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
 			}
 
 		} while (!response_ok && responseCode != UNPROCESSABLE_ENTITY);
