@@ -262,6 +262,11 @@ public class App {
 					throw new RuntimeException(e);
 
 				}
+				int everyXtimes = debug ? 10 : 50;
+				if (id % everyXtimes == 0) {
+					System.out.println(
+							"# Types of instances, unique at the file-level, seen (note- not necessarily actual API usages): " + Dedup.resolvable);
+				}
 
 				if (resolvedFiles.getResolvedFiles().size() >= MAX_RESULT && id >= MAX_TO_INSPECT) {
 					break;
@@ -448,11 +453,7 @@ public class App {
 		String oldFileDirectory = filePath.substring(0, filePath.lastIndexOf('/'));
 		new File(oldFileDirectory).delete();
 
-		int everyXtimes = debug ? 10 : 50;
-		if (id % everyXtimes == 0) {
-			System.out.println(
-					"# Types of instances, unique at the file-level, seen (note- not necessarily actual API usages): " + Dedup.resolvable);
-		}
+	
 	}
 
 	private static String getLabelFilePath() {
@@ -988,8 +989,9 @@ public class App {
 			} else if (responseCode == ABUSE_RATE_LIMITS) {
 				System.out.println("Received response code indicating Abuse Rate Limits");
 				// retry current progress after wait for a minute
-				String retryAfter = request.header("Retry-After");
+				
 				try {
+					String retryAfter = request.header("Retry-After");
 					int sleepTime = 0; // wait for a while
 					if (retryAfter.isEmpty()) {
 						sleepTime = 1;
@@ -1000,6 +1002,10 @@ public class App {
 					TimeUnit.SECONDS.sleep(sleepTime);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
+				} catch (Exception e) {
+					e.printStackTrace();
+					System.out.println(request);
+					throw new RuntimeException(e);
 				}
 			} else if (responseCode == UNPROCESSABLE_ENTITY) {
 				System.out.println("Response Code: " + responseCode);
@@ -1009,7 +1015,15 @@ public class App {
 				System.out.println("Response Code: " + responseCode);
 				System.out.println("Response Body: " + request.body());
 				System.out.println("Response Headers: " + request.headers());
-				System.exit(-1);
+				try {
+			
+					int sleepTime = new Integer(60).intValue();
+					
+					System.out.println("Retry-After: " + sleepTime + " seconds");
+					TimeUnit.SECONDS.sleep(sleepTime);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
 			}
 
 		} while (!response_ok && responseCode != UNPROCESSABLE_ENTITY);
