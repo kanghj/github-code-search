@@ -960,7 +960,12 @@ public class App {
 		return response;
 	}
 
+	static Map<String, Integer> knownStars = new HashMap<>();
+	
 	private static int fetchStarGazers(String url) {
+		if (knownStars.containsKey(url)) {
+			return knownStars.get(url);
+		}
 
 		boolean response_ok = false;
 		int response = -1;
@@ -1032,6 +1037,8 @@ public class App {
 
 		synchronizedFeeder.releaseToken(token);
 
+		
+		knownStars.put(url, response);
 		return response;
 	}
 	
