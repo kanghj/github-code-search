@@ -1005,6 +1005,8 @@ public class App {
 				} catch (Exception e) {
 					e.printStackTrace();
 					System.out.println(request);
+					System.out.println("Response headers are:");
+					System.out.println(request.headers());
 					throw new RuntimeException(e);
 				}
 			} else if (responseCode == UNPROCESSABLE_ENTITY) {
