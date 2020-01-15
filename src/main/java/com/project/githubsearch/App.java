@@ -925,7 +925,7 @@ public class App {
 				String retryAfter = request.header("Retry-After");
 				try {
 					int sleepTime = 0; // wait for a while
-					if (retryAfter.isEmpty()) {
+					if (retryAfter == null || retryAfter.isEmpty()) {
 						sleepTime = 1;
 					} else {
 						sleepTime = new Integer(retryAfter).intValue();
@@ -997,8 +997,8 @@ public class App {
 				
 				try {
 					String retryAfter = request.header("Retry-After");
-					int sleepTime = 0; // wait for a while
-					if (retryAfter.isEmpty()) {
+					int sleepTime; // wait for a while
+					if (retryAfter == null || retryAfter.isEmpty()) {
 						sleepTime = 1;
 					} else {
 						sleepTime = new Integer(retryAfter).intValue();
