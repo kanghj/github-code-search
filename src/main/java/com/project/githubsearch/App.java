@@ -203,7 +203,7 @@ public class App {
 		int id = 0;
 		Optional<String> nextUrlRequest = Optional.empty();
 
-		while (resolvedFiles.getResolvedFiles().size() < MAX_RESULT && id < MAX_TO_INSPECT && lowerBound < 150_000) {
+		while (resolvedFiles.getResolvedFiles().size() < MAX_RESULT && id < MAX_TO_INSPECT && lowerBound < 200_000) {
 
 			Response response;
 			if (!nextUrlRequest.isPresent()) {
