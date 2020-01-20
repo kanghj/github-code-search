@@ -203,7 +203,7 @@ public class App {
 		int id = 0;
 		Optional<String> nextUrlRequest = Optional.empty();
 
-		while (resolvedFiles.getResolvedFiles().size() < MAX_RESULT && id < MAX_TO_INSPECT && lowerBound < 250_000) {
+		while (resolvedFiles.getResolvedFiles().size() < MAX_RESULT && id < MAX_TO_INSPECT && lowerBound < 150_000) {
 
 			Response response;
 			if (!nextUrlRequest.isPresent()) {
@@ -266,6 +266,7 @@ public class App {
 				if (id % everyXtimes == 0) {
 					System.out.println(
 							"# Types of instances, unique at the file-level, seen (note- not necessarily actual API usages): " + Dedup.resolvable);
+					System.out.println("\tSize lower-bound=" + lowerBound);
 				}
 
 				if (resolvedFiles.getResolvedFiles().size() >= MAX_RESULT && id >= MAX_TO_INSPECT) {
