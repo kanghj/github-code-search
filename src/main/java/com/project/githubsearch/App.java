@@ -576,6 +576,11 @@ public class App {
 			System.out.println("Exception is " + runtimeException);
 			runtimeException.printStackTrace();
 			System.out.println("File location: " + pathFile);
+		} catch (java.lang.StackOverflowError stackOverflow) {
+			System.out.println("=== StackOverflowError in Type Resolution ===");
+			System.out.println("Error is " + stackOverflow);
+			stackOverflow.printStackTrace();
+			System.out.println("File location: " + pathFile);
 		}
 
 		return Optional.empty();
