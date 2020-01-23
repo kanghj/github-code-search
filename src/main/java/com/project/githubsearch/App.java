@@ -1136,6 +1136,7 @@ public class App {
 		} catch (ParseProblemException parseException) {
 			return jarsPath;
 		}
+		
 
 		// filter importedPackages
 		// remove the project package and java predefined package
@@ -1144,11 +1145,12 @@ public class App {
 			String qualifiedName = importedPackages.get(0);
 			String[] names = qualifiedName.split("[.]");
 			String projectPackage = names[0].toString();
-			for (int i = 1; i < importedPackages.size(); i++) { // the first package is skipped
+			for (int i = 0; i < importedPackages.size(); i++) { 
 				qualifiedName = importedPackages.get(i);
 				names = qualifiedName.split("[.]");
 				String basePackage = names[0];
-				if (!basePackage.equals(projectPackage) && !basePackage.equals("java") && !basePackage.equals("javax")
+				if (//!basePackage.equals(projectPackage) && 
+						!basePackage.equals("java") && !basePackage.equals("javax")
 						&& !basePackage.equals("Override")) {
 					neededPackages.add(importedPackages.get(i));
 				}
@@ -1182,7 +1184,7 @@ public class App {
 			String pathToJar = downloadMavenJar(mavenPackages.get(i).getGroupId(),
 					mavenPackages.get(i).getArtifactId());
 			if (!pathToJar.equals("")) {
-				// System.out.println("Downloaded: " + pathToJar);
+				 System.out.println("Downloaded: " + pathToJar);
 				jarsPath.add(pathToJar);
 			}
 		}
