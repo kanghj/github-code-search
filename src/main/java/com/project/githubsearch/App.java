@@ -89,9 +89,8 @@ public class App {
 	private static final int UNPROCESSABLE_ENTITY = 422;
 
 	// number of needed file to be resolved
-	private static int MAX_RESULT = 20; // 30 for local testing; set to 100 for server testing; then 500 for the
-										// final run
-	private static int MAX_TO_INSPECT = 10000; // should increase this number eventually?
+	private static int MAX_RESULT = 20; 
+	private static int MAX_TO_INSPECT = 10000; // should increase this number?
 
 	// folder location to save the downloaded files and jars
 	// HJnotes : these are not actually constants....
