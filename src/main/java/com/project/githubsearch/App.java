@@ -126,7 +126,9 @@ public class App {
 		boolean isPartitionedBySize = Boolean.parseBoolean(args[3]); // true if we want to split up the queries by size
 		System.out.println("partitioning by size =" + isPartitionedBySize);
 		
-		String cocciPath = args[4]; // unused for now
+		if (args.length > 4) {
+			String cocciPath = args[4]; // unused for now
+		}
 		
 		List<String> additionalKeywordConstraint = new ArrayList<>();
 		// additional constraints may be useful for queries that are really hard to
