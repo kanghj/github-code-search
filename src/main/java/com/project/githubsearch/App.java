@@ -90,7 +90,7 @@ public class App {
 
 	// number of needed file to be resolved
 	private static int MAX_RESULT = 20; 
-	private static int MAX_TO_INSPECT = 10000; // should increase this number?
+	private static int MAX_TO_INSPECT = 50_000; // should increase this number?
 
 	// folder location to save the downloaded files and jars
 	// HJnotes : these are not actually constants....
@@ -117,7 +117,7 @@ public class App {
 
 		int numberToRetrieve = Integer.parseInt(args[1]);
 		MAX_RESULT = numberToRetrieve; // not exactly. This is the number of unique candidate-usage that is wanted
-		MAX_TO_INSPECT = MAX_RESULT * 200;
+		MAX_TO_INSPECT = MAX_RESULT * 20; 
 		
 		System.out.println("Maximum files to inspect=" + MAX_TO_INSPECT);
 
@@ -126,6 +126,7 @@ public class App {
 		boolean isPartitionedBySize = Boolean.parseBoolean(args[3]); // true if we want to split up the queries by size
 		System.out.println("partitioning by size =" + isPartitionedBySize);
 		
+		String cocciPath = args[4]; // unused for now
 		
 		List<String> additionalKeywordConstraint = new ArrayList<>();
 		// additional constraints may be useful for queries that are really hard to
@@ -133,8 +134,9 @@ public class App {
 		// e.g. new String(bytes, Charset).
 		// "String" appears everywhere, but Charset doesn't
 		// hence having the charset constraint is useful as input to github!
-		if (args.length > 4) {
-			for (int i = 4; i < args.length; i++) {
+		
+		if (args.length > 5) {
+			for (int i = 5; i < args.length; i++) {
 				additionalKeywordConstraint.add(args[i]);
 			}
 		}
@@ -421,6 +423,9 @@ public class App {
 							+ new File(DATA_LOCATION + "files" + "/" + id + "." + className + ".txt").toPath());
 					
 				}
+				
+				Files.copy(new File(filePath).toPath(),
+						new File(DATA_LOCATION + "cocci_files" + "/" + id + "." + className + ".txt").toPath());
 
 				return;
 			} else {
