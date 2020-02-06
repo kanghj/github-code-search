@@ -828,6 +828,8 @@ public class App {
 		makeFileResolutionLocation(folderName);
 
 		makeFailedFilesLocation(folderName);
+		
+		new File(DATA_LOCATION + "cocci_files").mkdir();
 
 		File jarFolder = new File(JARS_LOCATION);
 		if (!jarFolder.exists()) {
