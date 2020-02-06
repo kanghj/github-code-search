@@ -402,6 +402,11 @@ public class App {
 				String[] splitted = htmlUrl.split("/");
 				String className = splitted[splitted.length - 1];
 				String packageName = resolvedFile.getPackageName();
+				
+				Files.copy(new File(filePath).toPath(),
+						new File(DATA_LOCATION + "cocci_files" + "/" + id + "." + className + ".txt").toPath());
+
+				
 				if (!packageName.isEmpty()) {
 					String packageDirectories = packageName.replaceAll("\\.", "/");
 
@@ -426,8 +431,6 @@ public class App {
 					
 				}
 				
-				Files.copy(new File(filePath).toPath(),
-						new File(DATA_LOCATION + "cocci_files" + "/" + id + "." + className + ".txt").toPath());
 
 				return;
 			} else {
