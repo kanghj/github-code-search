@@ -1,4 +1,7 @@
 # Github Code Search (AUSearch Backend)
+
+The primary repository for AUSearch can be found at https://github.com/mhilmiasyrofi/ausearch. The accompanying paper, **AUSearch: Accurate API Usage Search in GitHub Repositories with Type Resolution**, published at SANER 2020, is at https://github.com/mhilmiasyrofi/ausearch/blob/master/SANER_2020_AUSearch.pdf.
+
 ### Find API usage example here!
 A CLI apps that helps you to find some API usage examples from java source code. Given an API query that allows type constraints, This tool will find code examples in GitHub that contain usages of the specific APIs in the query. This tool performs type resolutions to ensure that the API usages found in the returned files are indeed invocations of the APIs specified in the query and highlights the relevant lines of code in the files for easier reference.
 
