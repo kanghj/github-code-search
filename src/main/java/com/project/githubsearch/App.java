@@ -22,12 +22,14 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
@@ -39,6 +41,7 @@ import com.project.githubsearch.model.ResolvedFile;
 import com.project.githubsearch.model.Response;
 import com.project.githubsearch.model.SynchronizedFeeder;
 import com.project.githubsearch.model.SynchronizedTypeSolver;
+import com.project.githubsearch.Dedup.RejectReason;
 import com.project.githubsearch.model.GithubToken;
 
 import org.json.JSONArray;
@@ -131,6 +134,7 @@ public class App {
 		}
 		
 		List<String> additionalKeywordConstraint = new ArrayList<>();
+		List<String> negativeKeywordConstraint = new ArrayList<>();
 		// additional constraints may be useful for queries that are really hard to
 		// filter
 		// e.g. new String(bytes, Charset).
@@ -138,8 +142,16 @@ public class App {
 		// hence having the charset constraint is useful as input to github!
 		
 		if (args.length > 5) {
-			for (int i = 5; i < args.length; i++) {
-				additionalKeywordConstraint.add(args[i]);
+			for (int i = 5 ; i < args.length; i++) {
+				if (!args[i].startsWith("--")) {
+					String additionalKeywordsCommaSeparated = args[i];
+					
+					additionalKeywordConstraint = Arrays.asList(additionalKeywordsCommaSeparated.split(","));
+				} else if (args[i].startsWith("--not:")) {
+					
+					String negativelKeywordsCommaSeparated = args[i].split("--not:")[1];
+					negativeKeywordConstraint = Arrays.asList(negativelKeywordsCommaSeparated.split(","));
+				}
 			}
 		}
 
@@ -159,7 +171,7 @@ public class App {
 			throw new RuntimeException(e);
 		}
 
-		processQuery(query, isPartitionedBySize);
+		processQuery(query, isPartitionedBySize, negativeKeywordConstraint);
 		
 		System.out.println("args were: " + Arrays.toString(args));
 	}
@@ -194,7 +206,7 @@ public class App {
 		return codes;
 	}
 
-	private static void processQuery(Query query, boolean isSplitBySize) {
+	private static void processQuery(Query query, boolean isSplitBySize, List<String> negativeKeywordConstraint) {
 
 		String queryStr = query.toStringRequest();
 
@@ -259,7 +271,7 @@ public class App {
 				}
 				
 				try {
-					downloadAndResolveFile(id, htmlUrl, query, stars);
+					downloadAndResolveFile(id, htmlUrl, query, stars, negativeKeywordConstraint);
 				} catch (IOException e) {
 					e.printStackTrace();
 					throw new RuntimeException(e);
@@ -330,6 +342,7 @@ public class App {
 			System.out.println("Unable to write metadata ...");
 		}
 		
+		Set<Integer> alreadyWritten = new HashSet<>();
 		try (BufferedWriter writer = new BufferedWriter(
 				new FileWriter(DATA_LOCATION + "metadata/metadata_stars.csv"))) {
 			for (Entry<Integer, Boolean> entry : Dedup.canonicalCopiesResolvable.entrySet()) {
@@ -337,7 +350,9 @@ public class App {
 					continue;
 
 				for (Entry<Integer, Integer> starEntry : starsOnRepo.entrySet()) {
-					writer.write(entry.getKey() + "," + starEntry.getValue() + "\n");
+					if (alreadyWritten.contains(starEntry.getKey())) continue;
+					writer.write(starEntry.getKey() + "," + starEntry.getValue() + "\n");
+					alreadyWritten.add(starEntry.getKey());
 				}
 			}
 		} catch (IOException e) {
@@ -362,7 +377,7 @@ public class App {
 		return contentBuilder;
 	}
 
-	public static void downloadAndResolveFile(int id, String htmlUrl, Query query, int stars) throws IOException {
+	public static void downloadAndResolveFile(int id, String htmlUrl, Query query, int stars, List<String> negativeKeywordConstraint) throws IOException {
 		Optional<String> filePathOpt = downloadFile(htmlUrl, id);
 		if (!filePathOpt.isPresent())
 			return;
@@ -371,7 +386,9 @@ public class App {
 
 		List<String> lines = readLineByLine(filePath); // if fail due to some exception, then it will be empty
 		boolean isClone = false;
-		if (!lines.isEmpty() && Dedup.accept(id, htmlUrl, lines, stars, starsOnRepo)) {
+		
+		Optional<RejectReason> rejectReason = Dedup.accept(id, htmlUrl, lines, stars, starsOnRepo, negativeKeywordConstraint);
+		if (!lines.isEmpty() && !rejectReason.isPresent()) {
 			Optional<ResolvedFile> resolvedFileOpt = resolveFile(filePath, query);
 			if (resolvedFileOpt.isPresent()) {
 				ResolvedFile resolvedFile = resolvedFileOpt.get();
@@ -405,12 +422,9 @@ public class App {
 				
 				Files.copy(new File(filePath).toPath(),
 						new File(DATA_LOCATION + "cocci_files" + "/" + id + "." + className + ".txt").toPath());
-
 				
 				if (!packageName.isEmpty()) {
 					String packageDirectories = packageName.replaceAll("\\.", "/");
-
-					
 
 					File expectedFileLocation = new File(DATA_LOCATION + id + "/" + packageDirectories + "/");
 					if (!expectedFileLocation.exists()) {
@@ -437,16 +451,14 @@ public class App {
 				
 			}
 		} else {
-			isClone = true;
+			isClone = rejectReason.get().equals(RejectReason.CLONE);
 			// early return if this is a clone
 			if (debug) {
-				System.out.println("\t\tClone-like: " + id + " url=" + htmlUrl);
+				System.out.println("\t\tRejected: " + id + " url=" + htmlUrl + " due to "  + (isClone ? "clone-like" : "contains negative keyword" ));
 				
 			} else {
-				System.out.println("\t\tClone-like");
+				System.out.println("\t\tRejected due to " + (isClone ? "clone-like" : "contains negative keyword" ));
 			}
-
-			
 		}
 
 		// move file from DATA_LOCATION to DATA_LOCATION_FAILED

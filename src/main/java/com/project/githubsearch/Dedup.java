@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.stream.Collectors;
@@ -18,6 +19,10 @@ import java.util.stream.Collectors;
  *
  */
 public class Dedup {
+	
+	public enum RejectReason {
+		CLONE, NEGATIVE_KEYWORD,
+	}
 	
 	// store id -> collection of tokens appearing
 	static Map<Integer, Set<String>> canonicalCopies = new HashMap<>();
@@ -68,14 +73,19 @@ public class Dedup {
 	 * @param linesOfCode
 	 * @param stars
 	 * @param starsOnRepo
+	 * @param negativeKeywordConstraint 
 	 * @return
 	 */
-	public static boolean accept(int id, String url, List<String> linesOfCode, int stars, Map<Integer, Integer> starsOnRepo) {
+	public static Optional<RejectReason> accept(int id, String url, List<String> linesOfCode, int stars, Map<Integer, Integer> starsOnRepo, List<String> negativeKeywordConstraint) {
 		linesOfCode = stripComments(linesOfCode);
 		
 		String codeAsStr = String.join(" ", linesOfCode);
 		
 		Set<String> tokens = new HashSet<>(Arrays.asList(codeAsStr.split(" ")));
+		
+		if (tokens.stream().anyMatch(token -> negativeKeywordConstraint.contains(token))) {
+			return Optional.of(RejectReason.NEGATIVE_KEYWORD);
+		}
 		
 		for (Entry<Integer, Set<String>> canonicalCopy : canonicalCopies.entrySet()) {
 			Integer key = canonicalCopy.getKey();
@@ -85,7 +95,7 @@ public class Dedup {
 				canonicalCopiesUrl.get(key).add(url);
 				
 				starsOnRepo.put(key, Math.max(starsOnRepo.get(key), stars));
-				return false;
+				return Optional.of(RejectReason.CLONE);
 			}
 		}
 		
@@ -97,7 +107,7 @@ public class Dedup {
 		canonicalCopiesResolvable.put(id, false); // don't know yet
 		
 		starsOnRepo.put(id, stars);
-		return true;
+		return Optional.empty();
 	}
 	
 
