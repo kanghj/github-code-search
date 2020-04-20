@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 /**
  * Let's do heuristic based clone detection. Similar to Sourcerer's CC
  * This class throws out source code that doesn ot meet the criteria of acceptance, including not being a clone of existing accepted programs.
+ * Metadata is also trakced and updated by this class. It is very stateful.
  * 
  * @author kanghongjin
  *

@@ -156,6 +156,11 @@ public class App {
 			}
 		}
 
+		runSearch(args, input, isPartitionedBySize, additionalKeywordConstraints, negativeKeywordConstraints);
+	}
+
+	public static void runSearch(String[] args, String input, boolean isPartitionedBySize,
+			List<String> additionalKeywordConstraints, List<String> negativeKeywordConstraints) {
 		Query query = parseQuery(input, additionalKeywordConstraints);
 
 		printQuery(query);
@@ -163,6 +168,14 @@ public class App {
 		initUniqueFolderToSaveData(query, isPartitionedBySize);
 		start = Instant.now();
 
+		initLabelFile();
+
+		processQuery(query, isPartitionedBySize, negativeKeywordConstraints);
+		
+		System.out.println("args were: " + Arrays.toString(args));
+	}
+
+	private static void initLabelFile() {
 		try (BufferedWriter writer = new BufferedWriter(new FileWriter(getLabelFilePath()))) {
 			writer.write("id" + "," + "label");
 			writer.write("\n");
@@ -171,10 +184,6 @@ public class App {
 			e.printStackTrace();
 			throw new RuntimeException(e);
 		}
-
-		processQuery(query, isPartitionedBySize, negativeKeywordConstraints);
-		
-		System.out.println("args were: " + Arrays.toString(args));
 	}
 
 	private static List<String> getSnippetCode(String pathFile, List<Integer> lineNumbers) {
