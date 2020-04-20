@@ -41,7 +41,7 @@ import com.project.githubsearch.model.ResolvedFile;
 import com.project.githubsearch.model.Response;
 import com.project.githubsearch.model.SynchronizedFeeder;
 import com.project.githubsearch.model.SynchronizedTypeSolver;
-import com.project.githubsearch.Dedup.RejectReason;
+import com.project.githubsearch.SourceCodeAcceptor.RejectReason;
 import com.project.githubsearch.model.GithubToken;
 
 import org.json.JSONArray;
@@ -117,7 +117,7 @@ public class App {
 	public static void main(String[] args) {
 		System.out.println("args: " + Arrays.toString(args));
 		String input = args[0];
-
+		
 		int numberToRetrieve = Integer.parseInt(args[1]);
 		MAX_RESULT = numberToRetrieve; // not exactly. This is the number of unique candidate-usage that is wanted
 		MAX_TO_INSPECT = MAX_RESULT * 20; 
@@ -133,8 +133,8 @@ public class App {
 			String cocciPath = args[4]; // unused for now
 		}
 		
-		List<String> additionalKeywordConstraint = new ArrayList<>();
-		List<String> negativeKeywordConstraint = new ArrayList<>();
+		List<String> additionalKeywordConstraints = new ArrayList<>();
+		List<String> negativeKeywordConstraints = new ArrayList<>();
 		// additional constraints may be useful for queries that are really hard to
 		// filter
 		// e.g. new String(bytes, Charset).
@@ -142,20 +142,21 @@ public class App {
 		// hence having the charset constraint is useful as input to github!
 		
 		if (args.length > 5) {
+			// args[5] and beyond
 			for (int i = 5 ; i < args.length; i++) {
 				if (!args[i].startsWith("--")) {
 					String additionalKeywordsCommaSeparated = args[i];
 					
-					additionalKeywordConstraint = Arrays.asList(additionalKeywordsCommaSeparated.split(","));
+					additionalKeywordConstraints = Arrays.asList(additionalKeywordsCommaSeparated.split(","));
 				} else if (args[i].startsWith("--not:")) {
 					
 					String negativelKeywordsCommaSeparated = args[i].split("--not:")[1];
-					negativeKeywordConstraint = Arrays.asList(negativelKeywordsCommaSeparated.split(","));
+					negativeKeywordConstraints = Arrays.asList(negativelKeywordsCommaSeparated.split(","));
 				}
 			}
 		}
 
-		Query query = parseQuery(input, additionalKeywordConstraint);
+		Query query = parseQuery(input, additionalKeywordConstraints);
 
 		printQuery(query);
 
@@ -171,7 +172,7 @@ public class App {
 			throw new RuntimeException(e);
 		}
 
-		processQuery(query, isPartitionedBySize, negativeKeywordConstraint);
+		processQuery(query, isPartitionedBySize, negativeKeywordConstraints);
 		
 		System.out.println("args were: " + Arrays.toString(args));
 	}
@@ -280,7 +281,7 @@ public class App {
 				int everyXtimes = debug ? 10 : 50;
 				if (id % everyXtimes == 0) {
 					System.out.println(
-							"# Types of instances, unique at the file-level, seen (note- not necessarily actual API usages): " + Dedup.resolvable);
+							"# Types of instances, unique at the file-level, seen (note- not necessarily actual API usages): " + SourceCodeAcceptor.resolvable);
 					System.out.println("\tSize lower-bound=" + lowerBound);
 				}
 
@@ -294,15 +295,15 @@ public class App {
 		System.out.println("===== Statistics about instances that we managed to resolve =====");
 		System.out.println("<id>: <Number of similar copies found>");
 		int total = 0;
-		for (Entry<Integer, Boolean> entry : Dedup.canonicalCopiesResolvable.entrySet()) {
+		for (Entry<Integer, Boolean> entry : SourceCodeAcceptor.canonicalCopiesResolvable.entrySet()) {
 			if (!entry.getValue())
 				continue;
 
-			System.out.println("=== " + entry.getKey() + " : " + Dedup.canonicalCopiesCount.get(entry.getKey()));
-			total += Dedup.canonicalCopiesCount.get(entry.getKey());
+			System.out.println("=== " + entry.getKey() + " : " + SourceCodeAcceptor.canonicalCopiesCount.get(entry.getKey()));
+			total += SourceCodeAcceptor.canonicalCopiesCount.get(entry.getKey());
 		}
 		System.out.println("Total files: " + total);
-		System.out.println("Total types of files: " + Dedup.resolvable);
+		System.out.println("Total types of files: " + SourceCodeAcceptor.resolvable);
 
 		String metadataDirectory = DATA_LOCATION + "metadata/";
 		if (!new File(metadataDirectory).exists()) {
@@ -313,11 +314,11 @@ public class App {
 		System.out.println("\t\t and " + metadataDirectory + "metadata_locations.csv");
 		System.out.println("\t\t and " + metadataDirectory + "metadata_stars.csv");
 		try (BufferedWriter writer = new BufferedWriter(new FileWriter(DATA_LOCATION + "metadata/metadata.csv"))) {
-			for (Entry<Integer, Boolean> entry : Dedup.canonicalCopiesResolvable.entrySet()) {
+			for (Entry<Integer, Boolean> entry : SourceCodeAcceptor.canonicalCopiesResolvable.entrySet()) {
 				if (!entry.getValue())
 					continue;
 
-				writer.write(entry.getKey() + "," + Dedup.canonicalCopiesCount.get(entry.getKey()) + "\n");
+				writer.write(entry.getKey() + "," + SourceCodeAcceptor.canonicalCopiesCount.get(entry.getKey()) + "\n");
 
 			}
 		} catch (IOException e) {
@@ -327,12 +328,12 @@ public class App {
 
 		try (BufferedWriter writer = new BufferedWriter(
 				new FileWriter(DATA_LOCATION + "metadata/metadata_locations.csv"))) {
-			for (Entry<Integer, Boolean> entry : Dedup.canonicalCopiesResolvable.entrySet()) {
+			for (Entry<Integer, Boolean> entry : SourceCodeAcceptor.canonicalCopiesResolvable.entrySet()) {
 				if (!entry.getValue())
 					continue;
 
 				int i = 0;
-				for (String url : Dedup.canonicalCopiesUrl.get(entry.getKey())) {
+				for (String url : SourceCodeAcceptor.canonicalCopiesUrl.get(entry.getKey())) {
 					writer.write(entry.getKey() + "," + i + "," + url + "\n");
 					i++;
 				}
@@ -345,7 +346,7 @@ public class App {
 		Set<Integer> alreadyWritten = new HashSet<>();
 		try (BufferedWriter writer = new BufferedWriter(
 				new FileWriter(DATA_LOCATION + "metadata/metadata_stars.csv"))) {
-			for (Entry<Integer, Boolean> entry : Dedup.canonicalCopiesResolvable.entrySet()) {
+			for (Entry<Integer, Boolean> entry : SourceCodeAcceptor.canonicalCopiesResolvable.entrySet()) {
 				if (!entry.getValue())
 					continue;
 
@@ -387,7 +388,7 @@ public class App {
 		List<String> lines = readLineByLine(filePath); // if fail due to some exception, then it will be empty
 		boolean isClone = false;
 		
-		Optional<RejectReason> rejectReason = Dedup.accept(id, htmlUrl, lines, stars, starsOnRepo, negativeKeywordConstraint);
+		Optional<RejectReason> rejectReason = SourceCodeAcceptor.accept(id, htmlUrl, lines, stars, starsOnRepo, negativeKeywordConstraint);
 		if (!lines.isEmpty() && !rejectReason.isPresent()) {
 			Optional<ResolvedFile> resolvedFileOpt = resolveFile(filePath, query);
 			if (resolvedFileOpt.isPresent()) {
@@ -412,7 +413,7 @@ public class App {
 
 				resolvedFiles.add(resolvedFile);
 
-				Dedup.indicateCanBeResolved(id);
+				SourceCodeAcceptor.indicateCanBeResolved(id);
 
 				// move file to directory such that the package name is respected.
 				// (usually useful for further analysis)
@@ -794,7 +795,7 @@ public class App {
 
 	}
 
-	private static Query parseQuery(String s, List<String> additionalKeywordConstraint) {
+	private static Query parseQuery(String s, List<String> additionalKeywordConstraints) {
 		s = s.replace(" ", "");
 
 		int hashLocation = s.indexOf('#');
@@ -823,7 +824,7 @@ public class App {
 		query.setFullyQualifiedClassName(fullyQualifiedClassName);
 		query.setMethod(method);
 		query.setArguments(arguments);
-		query.setAdditionalKeywords(additionalKeywordConstraint);
+		query.setAdditionalKeywords(additionalKeywordConstraints);
 		return query;
 	}
 

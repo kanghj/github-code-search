@@ -13,12 +13,12 @@ import java.util.stream.Collectors;
 
 /**
  * Let's do heuristic based clone detection. Similar to Sourcerer's CC
- * 
+ * This class throws out source code that doesn ot meet the criteria of acceptance, including not being a clone of existing accepted programs.
  * 
  * @author kanghongjin
  *
  */
-public class Dedup {
+public class SourceCodeAcceptor {
 	
 	public enum RejectReason {
 		CLONE, NEGATIVE_KEYWORD,
