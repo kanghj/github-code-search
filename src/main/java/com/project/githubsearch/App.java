@@ -19,6 +19,8 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -140,7 +142,8 @@ public class App {
 		// e.g. new String(bytes, Charset).
 		// "String" appears everywhere, but Charset doesn't
 		// hence having the charset constraint is useful as input to github!
-		
+		int minStars = -1;
+		int updatedAfterYear = 1970;
 		if (args.length > 5) {
 			// args[5] and beyond
 			for (int i = 5 ; i < args.length; i++) {
@@ -152,15 +155,23 @@ public class App {
 					
 					String negativelKeywordsCommaSeparated = args[i].split("--not:")[1];
 					negativeKeywordConstraints = Arrays.asList(negativelKeywordsCommaSeparated.split(","));
+				} else if (args[i].startsWith("--star:")) {
+					try {
+						minStars = Integer.parseInt(args[i].split("--star:")[1]);
+					} catch (NumberFormatException e) {
+						throw new RuntimeException("invalid --star value. You gave " + args[i] + ", which could not be parsed and it threw NumberFormatException");
+					}
+				} else if (args[i].startsWith("--updated_after:")) {
+					updatedAfterYear = Integer.parseInt(args[i].split("--updated_after:")[1]);
 				}
 			}
 		}
 
-		runSearch(args, input, isPartitionedBySize, additionalKeywordConstraints, negativeKeywordConstraints);
+		runSearch(args, input, isPartitionedBySize, additionalKeywordConstraints, negativeKeywordConstraints, minStars, updatedAfterYear);
 	}
 
 	public static void runSearch(String[] args, String input, boolean isPartitionedBySize,
-			List<String> additionalKeywordConstraints, List<String> negativeKeywordConstraints) {
+			List<String> additionalKeywordConstraints, List<String> negativeKeywordConstraints, int minStars, int updatedAfterYear) {
 		Query query = parseQuery(input, additionalKeywordConstraints);
 
 		printQuery(query);
@@ -170,7 +181,7 @@ public class App {
 
 		initLabelFile();
 
-		processQuery(query, isPartitionedBySize, negativeKeywordConstraints);
+		processQuery(query, isPartitionedBySize, negativeKeywordConstraints, minStars, updatedAfterYear);
 		
 		System.out.println("args were: " + Arrays.toString(args));
 	}
@@ -216,7 +227,8 @@ public class App {
 		return codes;
 	}
 
-	private static void processQuery(Query query, boolean isSplitBySize, List<String> negativeKeywordConstraint) {
+	private static void processQuery(Query query, boolean isSplitBySize, 
+			List<String> negativeKeywordConstraint, int minStars, int updatedAfterYear) {
 
 		String queryStr = query.toStringRequest();
 
@@ -256,7 +268,8 @@ public class App {
 	
 			Queue<String> data = new LinkedList<>();
 			
-			int stars = -1;
+			Map<String, Integer> repoStarsForBatch = new HashMap<>();
+			Map<String, Integer> repoYearForBatch = new HashMap<>();
 			for (int it = 0; it < item.length(); it++) {
 				JSONObject instance = new JSONObject(item.get(it).toString());
 				
@@ -265,7 +278,9 @@ public class App {
 				JSONObject repo = instance.getJSONObject("repository");
 				
 				String repoUrl = repo.getString("url");
-				stars = fetchStarGazers(repoUrl);
+				repoStarsForBatch.put(instance.getString("html_url"), fetchStarGazers(repoUrl));
+				
+				repoYearForBatch.put(instance.getString("html_url"), fetchYearUpdated(repoUrl));
 			}
 
 			while (!data.isEmpty()) {
@@ -281,7 +296,7 @@ public class App {
 				}
 				
 				try {
-					downloadAndResolveFile(id, htmlUrl, query, stars, negativeKeywordConstraint);
+					downloadAndResolveFile(id, htmlUrl, query, repoStarsForBatch.get(htmlUrl), negativeKeywordConstraint, minStars);
 				} catch (IOException e) {
 					e.printStackTrace();
 					throw new RuntimeException(e);
@@ -295,10 +310,15 @@ public class App {
 				}
 
 				if (resolvedFiles.getResolvedFiles().size() >= MAX_RESULT && id >= MAX_TO_INSPECT) {
+					System.out.println("Terminating search as inspected too many files");
+					System.out.println("id=" + id + ". MAX TO INSPECT=" + MAX_TO_INSPECT);
+					System.out.println("num resolved file =" + resolvedFiles.getResolvedFiles().size() + ". MAX_RESULT=" + MAX_RESULT);
 					break;
 				}
 			}
 		}
+		
+		// Done. Print metadata and statistics
 
 		logTimingStatistics();
 		System.out.println("===== Statistics about instances that we managed to resolve =====");
@@ -355,16 +375,13 @@ public class App {
 		Set<Integer> alreadyWritten = new HashSet<>();
 		try (BufferedWriter writer = new BufferedWriter(
 				new FileWriter(DATA_LOCATION + "metadata/metadata_stars.csv"))) {
-			for (Entry<Integer, Boolean> entry : SourceCodeAcceptor.canonicalCopiesResolvable.entrySet()) {
-				if (!entry.getValue())
-					continue;
-
-				for (Entry<Integer, Integer> starEntry : starsOnRepo.entrySet()) {
-					if (alreadyWritten.contains(starEntry.getKey())) continue;
-					writer.write(starEntry.getKey() + "," + starEntry.getValue() + "\n");
-					alreadyWritten.add(starEntry.getKey());
-				}
+	
+			for (Entry<Integer, Integer> starEntry : starsOnRepo.entrySet()) {
+				if (alreadyWritten.contains(starEntry.getKey())) continue;
+				writer.write(starEntry.getKey() + "," + starEntry.getValue() + "\n");
+				alreadyWritten.add(starEntry.getKey());
 			}
+		
 		} catch (IOException e) {
 			e.printStackTrace();
 			System.out.println("Unable to write metadata ...");
@@ -387,7 +404,7 @@ public class App {
 		return contentBuilder;
 	}
 
-	public static void downloadAndResolveFile(int id, String htmlUrl, Query query, int stars, List<String> negativeKeywordConstraint) throws IOException {
+	public static void downloadAndResolveFile(int id, String htmlUrl, Query query, int stars, List<String> negativeKeywordConstraint, int minStars) throws IOException {
 		Optional<String> filePathOpt = downloadFile(htmlUrl, id);
 		if (!filePathOpt.isPresent())
 			return;
@@ -397,7 +414,7 @@ public class App {
 		List<String> lines = readLineByLine(filePath); // if fail due to some exception, then it will be empty
 		boolean isClone = false;
 		
-		Optional<RejectReason> rejectReason = SourceCodeAcceptor.accept(id, htmlUrl, lines, stars, starsOnRepo, negativeKeywordConstraint);
+		Optional<RejectReason> rejectReason = SourceCodeAcceptor.accept(id, htmlUrl, lines, stars, starsOnRepo, negativeKeywordConstraint, minStars);
 		if (!lines.isEmpty() && !rejectReason.isPresent()) {
 			Optional<ResolvedFile> resolvedFileOpt = resolveFile(filePath, query);
 			if (resolvedFileOpt.isPresent()) {
@@ -464,10 +481,10 @@ public class App {
 			isClone = rejectReason.get().equals(RejectReason.CLONE);
 			// early return if this is a clone
 			if (debug) {
-				System.out.println("\t\tRejected: " + id + " url=" + htmlUrl + " due to "  + (isClone ? "clone-like" : "contains negative keyword" ));
+				System.out.println("\t\tRejected: " + id + " url=" + htmlUrl + " due to "  + (isClone ? "clone-like" : "containing negative keyword, having insufficient stars, not having the right type" ));
 				
 			} else {
-				System.out.println("\t\tRejected due to " + (isClone ? "clone-like" : "contains negative keyword" ));
+				System.out.println("\t\tRejected due to " + (isClone ? "clone-like" : "containing negative keyword, having insufficient stars, not having the right type" ));
 			}
 		}
 
@@ -1000,30 +1017,60 @@ public class App {
 	}
 
 	static Map<String, Integer> knownStars = new HashMap<>();
+	static Map<String, Integer> knownYearUpdated = new HashMap<>();
 	
 	private static int fetchStarGazers(String url) {
 		if (knownStars.containsKey(url)) {
 			return knownStars.get(url);
 		}
 
-		boolean response_ok = false;
-		int response = -1;
-		int responseCode;
 
 		// encode the space into %20
 		url = url.replace(" ", "%20");
 		GithubToken token = synchronizedFeeder.getAvailableGithubToken();
 
+		JSONObject body = fetchGithubRepo(url, token);
+		updateLocalStoreOfRepo(url, body);
+		return knownStars.get(url);
+	}
+
+
+	private static int fetchYearUpdated(String url) {
+		if (knownYearUpdated.containsKey(url)) {
+			return knownYearUpdated.get(url);
+		}
+
+		// encode the space into %20
+		url = url.replace(" ", "%20");
+		GithubToken token = synchronizedFeeder.getAvailableGithubToken();
+
+		JSONObject body = fetchGithubRepo(url, token);
+		updateLocalStoreOfRepo(url, body);
+		return knownYearUpdated.get(url);
+	}
+	
+	private static void updateLocalStoreOfRepo(String url, JSONObject body) {
+		int stars = body.getInt("stargazers_count");
+		knownStars.put(url, stars);
+		
+		int lastUpdated = ZonedDateTime.parse(body.getString("updated_at")).getYear();
+		knownYearUpdated.put(url, lastUpdated);
+	}
+
+	
+	private static JSONObject fetchGithubRepo(String url, GithubToken token) {
+		int responseCode;
+		boolean response_ok = false;
+
+		JSONObject body = null;
 		do {
 			HttpRequest request = HttpRequest.get(url, false).authorization("token " + token.getToken());
-			System.out.println();
-			System.out.println("Request: " + request);
 
 			responseCode = request.code();
 			if (responseCode == RESPONSE_OK) {
-				JSONObject body = new JSONObject(request.body());
-				response = body.getInt("stargazers_count");
+				body = new JSONObject(request.body());
 				response_ok = true;
+//				System.out.println(body);
 		
 			} else if (responseCode == BAD_CREDENTIAL) {
 				System.out.println("Authorization problem");
@@ -1075,11 +1122,10 @@ public class App {
 		} while (!response_ok && responseCode != UNPROCESSABLE_ENTITY);
 
 		synchronizedFeeder.releaseToken(token);
-
-		
-		knownStars.put(url, response);
-		return response;
+		return body;
 	}
+	
+	
 	
 	private static Response handleCustomGithubRequest(String query, String size, int page,
 			int per_page_limit) {

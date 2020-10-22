@@ -27,7 +27,7 @@ mvn clean compile assembly:single
 ```
 
 
-java -cp target/github-code-search-1.0-SNAPSHOT-jar-with-dependencies.jar com.project.githubsearch.App "<fully qualified class name>#<method name>()" <# types of files> <access token> <split by size>
+java -cp target/github-code-search-1.0-SNAPSHOT-jar-with-dependencies.jar com.project.githubsearch.App "<fully qualified class name>#<method name>()" <# unique files> <access token> <split by size>
 
 ```
 java -cp target/github-code-search-1.0-SNAPSHOT-jar-with-dependencies.jar com.project.githubsearch.App "java.io.ByteArrayOutputStream#toByteArray()" 10 <access token> true
@@ -46,4 +46,6 @@ Note that these keywords are treated directly as text, i.e. they are neither typ
 We simply pass them into the query for Github's search, which is a black-box to us.
 Github will use these keywords in its own query, and therefore likely consider files containing these keywords more relevant.
 
-
+The search tool may not necessarily find <# unique files>. It will give up after one of the following conditions are met:
+1. 20 *  <# unique files> files has been inspected in total
+2. The lower bound of the filesize (used in partitioning the search results) has exceeded 200,000.

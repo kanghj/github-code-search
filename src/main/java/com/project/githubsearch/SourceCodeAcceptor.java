@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 public class SourceCodeAcceptor {
 	
 	public enum RejectReason {
-		CLONE, NEGATIVE_KEYWORD,
+		CLONE, NEGATIVE_KEYWORD, NOT_ENOUGH_STARS
 	}
 	
 	// store id -> collection of tokens appearing
@@ -77,15 +77,22 @@ public class SourceCodeAcceptor {
 	 * @param negativeKeywordConstraint 
 	 * @return
 	 */
-	public static Optional<RejectReason> accept(int id, String url, List<String> linesOfCode, int stars, Map<Integer, Integer> starsOnRepo, List<String> negativeKeywordConstraint) {
+	public static Optional<RejectReason> accept(int id, String url, List<String> linesOfCode, int stars, Map<Integer, Integer> starsOnRepo, List<String> negativeKeywordConstraint, int minStars) {
 		linesOfCode = stripComments(linesOfCode);
 		
 		String codeAsStr = String.join(" ", linesOfCode);
 		
 		Set<String> tokens = new HashSet<>(Arrays.asList(codeAsStr.split(" ")));
 		
-		if (tokens.stream().anyMatch(token -> negativeKeywordConstraint.contains(token))) {
+		Set<String> tokens2 = new HashSet<>(Arrays.asList(codeAsStr.split("[^A-za-z]")));
+//		System.out.println("tokens are" + tokens2);
+		if (tokens2.stream().anyMatch(token -> negativeKeywordConstraint.contains(token))) {
 			return Optional.of(RejectReason.NEGATIVE_KEYWORD);
+		}
+		
+		
+		if (stars < minStars) {
+			return Optional.of(RejectReason.NOT_ENOUGH_STARS);
 		}
 		
 		for (Entry<Integer, Set<String>> canonicalCopy : canonicalCopies.entrySet()) {
@@ -108,7 +115,15 @@ public class SourceCodeAcceptor {
 		canonicalCopiesResolvable.put(id, false); // don't know yet
 		
 		starsOnRepo.put(id, stars);
+		
 		return Optional.empty();
+	}
+	
+	public static void main(String... args) {
+		System.out.println(SourceCodeAcceptor.accept(1, "test", Arrays.asList("return optional.isPresent() ?",
+				"Optional.ofNullable( f.apply( optional.get() ) ) :",
+				"Optional.empty();"), 
+				10, new HashMap<>(), Arrays.asList("isPresent"), 0));
 	}
 	
 
