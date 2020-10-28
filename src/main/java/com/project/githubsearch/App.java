@@ -98,7 +98,7 @@ public class App {
 	private static int MAX_TO_INSPECT = 50_000; // should increase this number?
 
 	// folder location to save the downloaded files and jars
-	// HJnotes : these are not actually constants....
+	// HJ notes : these are not actually constants....
 	private static String DATA_LOCATION = "src/main/java/com/project/githubsearch/data/";
 	private static String DATA_LOCATION_FAILED = "src/main/java/com/project/githubsearch/failed_data/";
 	private static final String JARS_LOCATION = "src/main/java/com/project/githubsearch/jars/";
@@ -126,6 +126,7 @@ public class App {
 		
 		System.out.println("Maximum files to inspect=" + MAX_TO_INSPECT);
 
+		// token
 		synchronizedFeeder = new SynchronizedFeeder(args[2].split(","));
 		
 		boolean isPartitionedBySize = Boolean.parseBoolean(args[3]); // true if we want to split up the queries by size
@@ -144,6 +145,7 @@ public class App {
 		// hence having the charset constraint is useful as input to github!
 		int minStars = -1;
 		int updatedAfterYear = 1970;
+		boolean isNotApi = false;
 		if (args.length > 5) {
 			// args[5] and beyond
 			for (int i = 5 ; i < args.length; i++) {
@@ -151,28 +153,31 @@ public class App {
 					String additionalKeywordsCommaSeparated = args[i];
 					
 					additionalKeywordConstraints = Arrays.asList(additionalKeywordsCommaSeparated.split(","));
-				} else if (args[i].startsWith("--not:")) {
+				} else if (args[i].startsWith("--not=")) {
 					
-					String negativelKeywordsCommaSeparated = args[i].split("--not:")[1];
+					String negativelKeywordsCommaSeparated = args[i].split("--not=")[1];
 					negativeKeywordConstraints = Arrays.asList(negativelKeywordsCommaSeparated.split(","));
-				} else if (args[i].startsWith("--star:")) {
+				} else if (args[i].startsWith("--star=")) {
 					try {
-						minStars = Integer.parseInt(args[i].split("--star:")[1]);
+						minStars = Integer.parseInt(args[i].split("--star=")[1]);
 					} catch (NumberFormatException e) {
-						throw new RuntimeException("invalid --star value. You gave " + args[i] + ", which could not be parsed and it threw NumberFormatException");
+						throw new RuntimeException("invalid --star value. You gave " + args[i] + ", which could not be parsed and caused a NumberFormatException");
 					}
-				} else if (args[i].startsWith("--updated_after:")) {
-					updatedAfterYear = Integer.parseInt(args[i].split("--updated_after:")[1]);
+				} else if (args[i].startsWith("--updated_after=")) {
+					updatedAfterYear = Integer.parseInt(args[i].split("--updated_after=")[1]);
+				} else if (args[i].startsWith("--not_api")) {
+					isNotApi = true;
 				}
 			}
 		}
 
-		runSearch(args, input, isPartitionedBySize, additionalKeywordConstraints, negativeKeywordConstraints, minStars, updatedAfterYear);
+		runSearch(args, input, isPartitionedBySize, additionalKeywordConstraints, negativeKeywordConstraints, minStars, updatedAfterYear, isNotApi);
 	}
 
 	public static void runSearch(String[] args, String input, boolean isPartitionedBySize,
-			List<String> additionalKeywordConstraints, List<String> negativeKeywordConstraints, int minStars, int updatedAfterYear) {
-		Query query = parseQuery(input, additionalKeywordConstraints);
+			List<String> additionalKeywordConstraints, List<String> negativeKeywordConstraints, 
+			int minStars, int updatedAfterYear, boolean isNotApi) {
+		Query query = parseQuery(input, additionalKeywordConstraints, isNotApi);
 
 		printQuery(query);
 
@@ -181,7 +186,7 @@ public class App {
 
 		initLabelFile();
 
-		processQuery(query, isPartitionedBySize, negativeKeywordConstraints, minStars, updatedAfterYear);
+		processQuery(query, isPartitionedBySize, negativeKeywordConstraints, minStars, updatedAfterYear, isNotApi);
 		
 		System.out.println("args were: " + Arrays.toString(args));
 	}
@@ -228,7 +233,7 @@ public class App {
 	}
 
 	private static void processQuery(Query query, boolean isSplitBySize, 
-			List<String> negativeKeywordConstraint, int minStars, int updatedAfterYear) {
+			List<String> negativeKeywordConstraint, int minStars, int updatedAfterYear, boolean isNotApi) {
 
 		String queryStr = query.toStringRequest();
 
@@ -296,7 +301,7 @@ public class App {
 				}
 				
 				try {
-					downloadAndResolveFile(id, htmlUrl, query, repoStarsForBatch.get(htmlUrl), negativeKeywordConstraint, minStars);
+					downloadAndResolveFile(id, htmlUrl, query, repoStarsForBatch.get(htmlUrl), negativeKeywordConstraint, minStars, isNotApi);
 				} catch (IOException e) {
 					e.printStackTrace();
 					throw new RuntimeException(e);
@@ -404,7 +409,8 @@ public class App {
 		return contentBuilder;
 	}
 
-	public static void downloadAndResolveFile(int id, String htmlUrl, Query query, int stars, List<String> negativeKeywordConstraint, int minStars) throws IOException {
+	public static void downloadAndResolveFile(int id, String htmlUrl, Query query, int stars, 
+			List<String> negativeKeywordConstraint, int minStars, boolean isNotApi) throws IOException {
 		Optional<String> filePathOpt = downloadFile(htmlUrl, id);
 		if (!filePathOpt.isPresent())
 			return;
@@ -414,9 +420,21 @@ public class App {
 		List<String> lines = readLineByLine(filePath); // if fail due to some exception, then it will be empty
 		boolean isClone = false;
 		
-		Optional<RejectReason> rejectReason = SourceCodeAcceptor.accept(id, htmlUrl, lines, stars, starsOnRepo, negativeKeywordConstraint, minStars);
+		Optional<RejectReason> rejectReason = SourceCodeAcceptor.accept(
+				id, htmlUrl, lines, stars, starsOnRepo, negativeKeywordConstraint, minStars);
 		if (!lines.isEmpty() && !rejectReason.isPresent()) {
-			Optional<ResolvedFile> resolvedFileOpt = resolveFile(filePath, query);
+			
+			Optional<ResolvedFile> resolvedFileOpt;
+			if (isNotApi) {
+				// if not api
+				// resolvedFile isn't exactly "resolved"
+				// but we pretend that it is, to maintain backwards compat with the previous code
+				resolvedFileOpt = getResolvedFileOfNonApi(filePath, query);
+			} else {
+				resolvedFileOpt = resolveFile(filePath, query);
+			}
+			
+			 
 			if (resolvedFileOpt.isPresent()) {
 				ResolvedFile resolvedFile = resolvedFileOpt.get();
 
@@ -481,10 +499,10 @@ public class App {
 			isClone = rejectReason.get().equals(RejectReason.CLONE);
 			// early return if this is a clone
 			if (debug) {
-				System.out.println("\t\tRejected: " + id + " url=" + htmlUrl + " due to "  + (isClone ? "clone-like" : "containing negative keyword, having insufficient stars, not having the right type" ));
+				System.out.println("\t\tRejected: " + id + " url=" + htmlUrl + " due to "  + (isClone ? "is a clone of a case  already downloaded" : "containing negative keyword, having insufficient stars, not having the right type" ));
 				
 			} else {
-				System.out.println("\t\tRejected due to " + (isClone ? "clone-like" : "containing negative keyword, having insufficient stars, not having the right type" ));
+				System.out.println("\t\tRejected due to " + (isClone ? "is a clone of a case already downloaded" : "containing negative keyword, having insufficient stars, not having the right type" ));
 			}
 		}
 
@@ -504,6 +522,8 @@ public class App {
 
 	
 	}
+
+
 
 	private static String getLabelFilePath() {
 		return DATA_LOCATION + "labels.csv";
@@ -570,6 +590,45 @@ public class App {
 
 		return resolve(query, filePath);
 
+	}
+	
+	private static Optional<ResolvedFile> getResolvedFileOfNonApi(String filePath, Query query) throws IOException {
+
+		List<String> snippetCodes = new ArrayList<String>();
+
+		ResolvedFile resolvedFile = new ResolvedFile(query, "", "", new ArrayList<>(), snippetCodes);
+		
+		// as long as the text appears, we consider that it "matches"
+		List<String> lines = Files.readAllLines(Paths.get(filePath), StandardCharsets.UTF_8);
+		
+		String[] parts = query.getFullyQualifiedClassName().split("\\.");
+		Set<String> matchParts = new HashSet<>();
+		
+		List<Integer> lineNumbers = new ArrayList<>();
+		
+		// e.g. if all of "android", "annotation", "SuppressLint" appears in the file, we can guess that it has indeed the right annotation
+		for (int i = 0; i < lines.size(); i++ ) {
+			String line = lines.get(i);
+			for (String part : parts) {
+				if (line.contains(part)) {
+					matchParts.add(part);
+				
+					lineNumbers.add(i);
+				
+					resolvedFile.setPathFile(filePath);
+					resolvedFile.setLines(lineNumbers);
+					resolvedFile.setCodes(getSnippetCode(filePath, lineNumbers));
+				}
+			}
+		}
+		
+		if (matchParts.size() != parts.length) {
+			// it failed
+			return Optional.empty();
+		} else {
+			return Optional.of(resolvedFile);
+		}
+		
 	}
 
 	private static Optional<ResolvedFile> resolve(Query query, String pathFile) {
@@ -821,22 +880,35 @@ public class App {
 
 	}
 
-	private static Query parseQuery(String s, List<String> additionalKeywordConstraints) {
+	private static Query parseQuery(String s, List<String> additionalKeywordConstraints, boolean isNotApi) {
 		s = s.replace(" ", "");
 
-		int hashLocation = s.indexOf('#');
-		int leftBracketLocation = s.indexOf('(');
-		int rightBracketLocation = s.indexOf(')');
-		if (hashLocation == -1) {
-			System.out.println("Your query isn't accepted");
-			System.out.println("Query Format: " + "method");
-			System.out.println("Example: " + "android.app.Notification.Builder#addAction(argument, ...)");
-
-			throw new RuntimeException("wrong query format!");
+		
+		String fullyQualifiedClassName;
+		String method;
+		String args;
+		if (!isNotApi) {
+			int hashLocation = s.indexOf('#');
+			int leftBracketLocation = s.indexOf('(');
+			int rightBracketLocation = s.indexOf(')');
+			if (hashLocation == -1) {
+				System.out.println("Your query isn't accepted");
+				System.out.println("Query Format: " + "method");
+				System.out.println("Example: " + "android.app.Notification.Builder#addAction(argument, ...)");
+	
+				throw new RuntimeException("wrong query format!");
+			}
+			fullyQualifiedClassName = s.substring(0, hashLocation);
+			method = s.substring(hashLocation + 1, leftBracketLocation);
+			args = s.substring(leftBracketLocation + 1, rightBracketLocation);
+		} else {
+			// not api
+			// just pretend its a class
+			method = s;
+			args = "";
+			fullyQualifiedClassName = s;
 		}
-		String fullyQualifiedClassName = s.substring(0, hashLocation);
-		String method = s.substring(hashLocation + 1, leftBracketLocation);
-		String args = s.substring(leftBracketLocation + 1, rightBracketLocation);
+		
 
 		List<String> arguments = new ArrayList<>();
 		if (!args.isEmpty()) {
