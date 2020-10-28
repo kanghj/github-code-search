@@ -4,13 +4,14 @@ Several modifications were made for my own ease-of-use.
 The queries and github access tokens are now passed in as command line arguments.
 We only perform one query for each run, but more keywords can be added to the search query as needed to constrain the search.
 
-A deduplication process is performed for performance reasons. The cost of type resolution is high.
+A deduplication process is performed for performance reasons as the cost of type resolution is high.
+Thus, this is a code-clone-aware code search, in which clones (copy-pasted code) of already downloaded projects are discarded.
+If type resolution is not required, then use "--api=false".
 
 ## Prerequisite
 
 - JDK8
-- Maven3
-- GitHub OAuth Token
+- GitHub Access Token
 
 ## Getting Started
 
@@ -30,11 +31,12 @@ mvn clean compile assembly:single
 java -cp target/github-code-search-1.0-SNAPSHOT-jar-with-dependencies.jar com.project.githubsearch.App "<fully qualified class name>#<method name>()" <# unique files> <access token> <split by size>
 
 ```
-java -cp target/github-code-search-1.0-SNAPSHOT-jar-with-dependencies.jar com.project.githubsearch.App "java.io.ByteArrayOutputStream#toByteArray()" 10 <access token> true
+java -cp target/github-code-search-1.0-SNAPSHOT-jar-with-dependencies.jar com.project.githubsearch.App "java.io.ByteArrayOutputStream#toByteArray()" 10 <access token> 
 
-java -cp target/github-code-search-1.0-SNAPSHOT-jar-with-dependencies.jar com.project.githubsearch.App "java.util.Map#get(x)" 10 <access token> true
+java -cp target/github-code-search-1.0-SNAPSHOT-jar-with-dependencies.jar com.project.githubsearch.App "java.util.Map#get(x)" 10 <access token> 
 ```
 
+After execution, the downloaded projects will go into the "src/main/java/com/project/githubsearch/data" directory (TODO this will be fixed sooner or later).
 
 One modification I made was to ignore the type of the arguments. Now, just pass in a bunch of strings (e.g. get(x), or <init>(x,y)
 `# types of files` are the number of unique source files you expect to receive. 
@@ -44,8 +46,8 @@ but clones of already-seen files are uninteresting so these are discarded. The t
 If the results are too broad for your liking, further keywords can be added to the search query. 
 Note that these keywords are treated directly as text, i.e. they are neither type-resolved nor is there a guarantee that they appear in the search results. 
 We simply pass them into the query for Github's search, which is a black-box to us.
-Github will use these keywords in its own query, and therefore likely consider files containing these keywords more relevant.
+Github will use these keywords in its own query, and therefore, is likely consider files containing these keywords more relevant.
 
-The search tool may not necessarily find <# unique files>. It will give up after one of the following conditions are met:
+The search tool may not necessarily find <# unique files>. It will terminate the search after one of the following conditions are met:
 1. 20 *  <# unique files> files has been inspected in total
 2. The lower bound of the filesize (used in partitioning the search results) has exceeded 200,000.
