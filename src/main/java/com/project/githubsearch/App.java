@@ -129,12 +129,7 @@ public class App {
 		// token
 		synchronizedFeeder = new SynchronizedFeeder(args[2].split(","));
 		
-		boolean isPartitionedBySize = Boolean.parseBoolean(args[3]); // true if we want to split up the queries by size
-		System.out.println("partitioning by size =" + isPartitionedBySize);
-		
-		if (args.length > 4) {
-			String cocciPath = args[4]; // unused for now
-		}
+		boolean isPartitionedBySize = true;  // true if we want to split up the queries by size
 		
 		List<String> additionalKeywordConstraints = new ArrayList<>();
 		List<String> negativeKeywordConstraints = new ArrayList<>();
@@ -146,9 +141,9 @@ public class App {
 		int minStars = -1;
 		int updatedAfterYear = 1970;
 		boolean isNotApi = false;
-		if (args.length > 5) {
+		if (args.length > 3) {
 			// args[5] and beyond
-			for (int i = 5 ; i < args.length; i++) {
+			for (int i = 3 ; i < args.length; i++) {
 				if (!args[i].startsWith("--")) {
 					String additionalKeywordsCommaSeparated = args[i];
 					
@@ -165,12 +160,37 @@ public class App {
 					}
 				} else if (args[i].startsWith("--updated_after=")) {
 					updatedAfterYear = Integer.parseInt(args[i].split("--updated_after=")[1]);
-				} else if (args[i].startsWith("--not_api")) {
-					isNotApi = true;
-				}
+				} else if (args[i].startsWith("--api=")) {
+					isNotApi = !Boolean.parseBoolean(args[i].split("--api=")[1]);
+				} else if (args[i].startsWith("--size=")) {
+					isPartitionedBySize = Boolean.parseBoolean(args[i].split("--size=")[1]);
+				} else if (args[i].startsWith("--cocci=")) {
+					String cocciPath = args[i].split("--cocci=")[1]; // unused
+				} 
 			}
 		}
 
+		System.out.println("You are searching for " + OutputUtils.ANSI_PURPLE + input + OutputUtils.ANSI_RESET);
+		System.out.println("The search space will " + OutputUtils.ANSI_BLUE   + (isPartitionedBySize ? "" : "NOT ") + "be partitioned by size " + OutputUtils.ANSI_RESET + "(required for scaling up beyond GitHub's search result limits)");
+		if (isNotApi) {
+			System.out.println("Types will NOT" + OutputUtils.ANSI_BLUE + " be resolved (--api=false)" + OutputUtils.ANSI_RESET );
+		}
+		if (minStars > 0) {
+			System.out.println("There is a minimum star threshold that the repo must exceed (" + minStars + ")");
+		}
+		
+		if (additionalKeywordConstraints.size() > 0 || negativeKeywordConstraints.size() > 0) {
+			System.out.println("Other keywords to pass to GitHub:");
+			System.out.println(OutputUtils.ANSI_BLUE + "additional (will be biased towards results with these words):" + OutputUtils.ANSI_RESET + String.join(",", additionalKeywordConstraints));
+			System.out.println(OutputUtils.ANSI_BLUE + "negative (will completely filter results with these words):" + OutputUtils.ANSI_RESET + String.join(",", negativeKeywordConstraints));
+		}
+		if (updatedAfterYear != 1970) {
+			System.out.println(OutputUtils.ANSI_RED + "Updated after IS NOT IMPLEMENTED. IT WILl BE IGNORED" + OutputUtils.ANSI_RESET);
+		}
+		
+		System.out.println("");
+
+		
 		runSearch(args, input, isPartitionedBySize, additionalKeywordConstraints, negativeKeywordConstraints, minStars, updatedAfterYear, isNotApi);
 	}
 
@@ -292,7 +312,8 @@ public class App {
 				String htmlUrl = data.remove();
 				id++;
 
-				System.out.println("ID: " + id);
+				System.out.println();
+				System.out.println("\tID: " + id);
 				if (debug) {
 					System.out.println("\tFile Url: " + htmlUrl);
 				} 
@@ -310,14 +331,18 @@ public class App {
 				int everyXtimes = debug ? 10 : 50;
 				if (id % everyXtimes == 0) {
 					System.out.println(
-							"# Types of instances, unique at the file-level, seen (note- not necessarily actual API usages): " + SourceCodeAcceptor.resolvable);
-					System.out.println("\tSize lower-bound=" + lowerBound);
+							OutputUtils.ANSI_YELLOW + 
+							"# Types of instances, unique at the file-level, seen (note- not necessarily actual API usages): " + SourceCodeAcceptor.resolvable
+							+ OutputUtils.ANSI_RESET);
+					if (debug) {
+						System.out.println("\tSize lower-bound=" + lowerBound);
+					}
 				}
 
 				if (resolvedFiles.getResolvedFiles().size() >= MAX_RESULT && id >= MAX_TO_INSPECT) {
-					System.out.println("Terminating search as inspected too many files");
-					System.out.println("id=" + id + ". MAX TO INSPECT=" + MAX_TO_INSPECT);
-					System.out.println("num resolved file =" + resolvedFiles.getResolvedFiles().size() + ". MAX_RESULT=" + MAX_RESULT);
+					System.out.println(OutputUtils.ANSI_RED + "Terminating search as inspected too many files" + OutputUtils.ANSI_RESET);
+					System.out.println("\t current id=" + id + ". MAX TO INSPECT=" + MAX_TO_INSPECT);
+					System.out.println("\t # resolved file =" + resolvedFiles.getResolvedFiles().size() + ". MAX_RESULT=" + MAX_RESULT);
 					break;
 				}
 			}
@@ -326,24 +351,28 @@ public class App {
 		// Done. Print metadata and statistics
 
 		logTimingStatistics();
-		System.out.println("===== Statistics about instances that we managed to resolve =====");
-		System.out.println("<id>: <Number of similar copies found>");
+		System.out.println();
+		System.out.println("\t\t===== Statistics about instances that we managed to resolve =====");
+		System.out.println("\t\t\t\t<id>: <Number of similar copies found>");
 		int total = 0;
 		for (Entry<Integer, Boolean> entry : SourceCodeAcceptor.canonicalCopiesResolvable.entrySet()) {
 			if (!entry.getValue())
 				continue;
 
-			System.out.println("=== " + entry.getKey() + " : " + SourceCodeAcceptor.canonicalCopiesCount.get(entry.getKey()));
+			System.out.println("\t\t\t\t===\t" + entry.getKey() + "\t:\t" + SourceCodeAcceptor.canonicalCopiesCount.get(entry.getKey()) + "\t===");
 			total += SourceCodeAcceptor.canonicalCopiesCount.get(entry.getKey());
 		}
-		System.out.println("Total files: " + total);
-		System.out.println("Total types of files: " + SourceCodeAcceptor.resolvable);
+		
+		System.out.println();
+		System.out.println("Total files (including clones): " + total);
+		System.out.println("Total unique files: " + SourceCodeAcceptor.resolvable);
 
 		String metadataDirectory = DATA_LOCATION + "metadata/";
 		if (!new File(metadataDirectory).exists()) {
 			new File(metadataDirectory).mkdirs();
 		}
 
+		System.out.println(OutputUtils.ANSI_YELLOW + "Files are written to " + DATA_LOCATION  + OutputUtils.ANSI_RESET);
 		System.out.println("Writing metadata to " + metadataDirectory + "metadata.csv");
 		System.out.println("\t\t and " + metadataDirectory + "metadata_locations.csv");
 		System.out.println("\t\t and " + metadataDirectory + "metadata_stars.csv");
@@ -436,16 +465,17 @@ public class App {
 			
 			 
 			if (resolvedFileOpt.isPresent()) {
+				System.out.println(OutputUtils.ANSI_GREEN + "\t\tAccepted!" + OutputUtils.ANSI_RESET);
 				ResolvedFile resolvedFile = resolvedFileOpt.get();
 
 				resolvedFile.setUrl(htmlUrl);
 
 				if (debug) {
 					logTimingStatistics();
-					System.out.println("\tURL: " + resolvedFile.getUrl());
-					System.out.println("\tPath to File: " + resolvedFile.getPathFile());
-					System.out.println("\tLine: " + resolvedFile.getLines());
-					System.out.println("\tSnippet Code: ");
+					System.out.println("\t\tURL: " + resolvedFile.getUrl());
+					System.out.println("\t\tPath to File: " + resolvedFile.getPathFile());
+					System.out.println("\t\tLine: " + resolvedFile.getLines());
+					System.out.println("\t\tSnippet Code: ");
 				}
 
 				List<String> codes = getSnippetCode(resolvedFile.getPathFile(), resolvedFile.getLines());
@@ -479,14 +509,14 @@ public class App {
 							new File(expectedFileLocation.toString() + "/" + className + ".txt").toPath());
 					new File(filePath)
 							.renameTo(new File(DATA_LOCATION + "files" + "/" + id + "." + className + ".txt"));
-					System.out.println("\tmoved file to "
-							+ new File(expectedFileLocation.toString() + "/" + className + ".txt"));
+					System.out.println(OutputUtils.ANSI_YELLOW +  "\tmoved file to "
+							+ new File(expectedFileLocation.toString() + "/" + className + ".txt") + OutputUtils.ANSI_RESET);
 				} else {
 					// no package
 					Files.copy(new File(filePath).toPath(),
 							new File(DATA_LOCATION + "files" + "/" + id + "." + className + ".txt").toPath());
-					System.out.println("\tcopy file to "
-							+ new File(DATA_LOCATION + "files" + "/" + id + "." + className + ".txt").toPath());
+					System.out.println(OutputUtils.ANSI_YELLOW + "\tcopied file to "
+							+ new File(DATA_LOCATION + "files" + "/" + id + "." + className + ".txt").toPath() + OutputUtils.ANSI_RESET);
 					
 				}
 				
@@ -496,30 +526,26 @@ public class App {
 				
 			}
 		} else {
-			isClone = rejectReason.get().equals(RejectReason.CLONE);
-			// early return if this is a clone
-			if (debug) {
-				System.out.println("\t\tRejected: " + id + " url=" + htmlUrl + " due to "  + (isClone ? "is a clone of a case  already downloaded" : "containing negative keyword, having insufficient stars, not having the right type" ));
-				
-			} else {
-				System.out.println("\t\tRejected due to " + (isClone ? "is a clone of a case already downloaded" : "containing negative keyword, having insufficient stars, not having the right type" ));
-			}
+			// early return if failed
+			System.out.println("\t\t" + OutputUtils.ANSI_RED + "Rejected: " + OutputUtils.ANSI_RESET + //" url=" + htmlUrl + 
+					"It "  + rejectReason.get().description());
+		
 		}
 
 		// move file from DATA_LOCATION to DATA_LOCATION_FAILED
 		if (debug) {
-			System.out.println("\tmoving non-matching file");
+			System.out.println("\tmoving file to " + DATA_LOCATION_FAILED);
 			new File(filePath).renameTo(new File(DATA_LOCATION_FAILED + "files/" + id + ".txt"));
 		} else {
-			if (isClone) {
-				new File(filePath).delete(); // save space.
-			} else {
-				new File(filePath).renameTo(new File(DATA_LOCATION_FAILED + "files/" + id + ".txt"));
-			}
+//			if (isClone) {
+			new File(filePath).delete(); // save space.
+			System.out.println(OutputUtils.ANSI_YELLOW + "\tdeleting file" + OutputUtils.ANSI_RESET);
+//			} else {
+//				new File(filePath).renameTo(new File(DATA_LOCATION_FAILED + "files/" + id + ".txt"));
+//			}
 		}
 		String oldFileDirectory = filePath.substring(0, filePath.lastIndexOf('/'));
 		new File(oldFileDirectory).delete();
-
 	
 	}
 
@@ -562,18 +588,19 @@ public class App {
 				}
 			}
 
-			System.out.print("\tdownload to " + pathFile + " .. from " + htmlUrl);
+			System.out.println(OutputUtils.ANSI_YELLOW + "\tdownloaded to " + pathFile + " for checking");
+			System.out.print(OutputUtils.ANSI_WHITE + " \t.. from "  + htmlUrl + OutputUtils.ANSI_RESET);
 
 			FileOutputStream fileOutputStream = new FileOutputStream(pathFile);
 			fileOutputStream.getChannel().transferFrom(readableByteChannel, 0, Long.MAX_VALUE);
 			fileOutputStream.close();
 
-			System.out.println(" succeeded!");
+//			System.out.println(" succeeded!");
 
 			return Optional.of(pathFile);
 
 		} catch (FileNotFoundException e) {
-			System.out.println("Can't download the github file");
+			System.out.println("Can't download the file from github");
 			System.out.println("File not found!");
 			e.printStackTrace();
 		} catch (MalformedURLException e) {
@@ -983,6 +1010,7 @@ public class App {
 		File files = new File(DATA_LOCATION + "files/");
 		if (files.exists()) {
 			System.out.println("One should delete the old collected files before rerunning this");
+			System.out.println(OutputUtils.ANSI_RED + "Try deleting " + DATA_LOCATION + OutputUtils.ANSI_RESET);
 			throw new RuntimeException(DATA_LOCATION + "files/" + " seems to already exist. One should delete them before rerunning this.");
 		}
 		files.mkdirs();

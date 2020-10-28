@@ -22,7 +22,18 @@ import java.util.stream.Collectors;
 public class SourceCodeAcceptor {
 	
 	public enum RejectReason {
-		CLONE, NEGATIVE_KEYWORD, NOT_ENOUGH_STARS
+		CLONE, NEGATIVE_KEYWORD, NOT_ENOUGH_STARS;
+		
+		public String description() {
+			if (this == CLONE) {
+				return "is a clone of a previously seen case";
+			} else if (this == NEGATIVE_KEYWORD) {
+				return "contains prohibited keywords";
+			} else if (this == NOT_ENOUGH_STARS) {
+				return "does not have enough stars";
+			}
+			return "unknown"; // it's not really imporatnt. just return a dummy value instead of throwing.
+		}
 	}
 	
 	// store id -> collection of tokens appearing
