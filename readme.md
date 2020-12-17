@@ -49,4 +49,4 @@ Github will use these keywords in its own query, and therefore, is likely consid
 
 The search tool may not necessarily find <# unique files>. It will terminate the search after one of the following conditions are met:
 1. 20 *  <# unique files> files has been inspected in total
-2. The lower bound of the filesize (used in partitioning the search results) has exceeded 200,000.
+2. The lower bound of the filesize (used in partitioning the search results) has exceeded 150,000.

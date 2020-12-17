@@ -16,6 +16,7 @@ import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
@@ -23,6 +24,7 @@ import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -33,6 +35,7 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.github.kevinsawicki.http.HttpRequest;
@@ -73,56 +76,23 @@ import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeS
  */
 public class CallGraphAcrossProjects {
 
-	// number of needed file to be resolved
-	private static int MAX_RESULT = 20; 
-	private static int MAX_TO_INSPECT = 50_000; // should increase this number?
 
-	// folder location to save the downloaded files and jars
-	// HJ notes : these are not actually constants....
-	private static String DATA_LOCATION = "src/main/java/com/project/githubsearch/data/";
-	private static String DATA_LOCATION_FAILED = "src/main/java/com/project/githubsearch/failed_data/";
-	private static final String JARS_LOCATION = "src/main/java/com/project/githubsearch/jars/";
-
-	private static final String endpoint = "https://api.github.com/search/code";
-
-	private static SynchronizedFeeder synchronizedFeeder;
-	private static ResolvedFiles resolvedFiles = new ResolvedFiles();
-	private static SynchronizedTypeSolver synchronizedTypeSolver = new SynchronizedTypeSolver();
-
-	private static Instant start;
-
-	
-	private static Map<Integer, Integer> starsOnRepo = new HashMap<>();
-	
 	public final static boolean debug = false;
 
-	public static void main(String[] args) {
-		System.out.println("args: " + Arrays.toString(args));
-		String input = args[0];
-		
-		int numberToRetrieve = Integer.parseInt(args[1]);
-		MAX_RESULT = numberToRetrieve; // not exactly. This is the number of unique candidate-usage that is wanted
-		MAX_TO_INSPECT = MAX_RESULT * 10; 
-		
-		System.out.println("Maximum files to inspect=" + MAX_TO_INSPECT);
+	public static void main(String[] args) throws IOException {
 
-		// token
-		synchronizedFeeder = new SynchronizedFeeder(args[2].split(","));
-		
-		boolean isPartitionedBySize = true;  // true if we want to split up the queries by size
-		
+
 		List<String> additionalKeywordConstraints = new ArrayList<>();
 		List<String> negativeKeywordConstraints = new ArrayList<>();
 
 		int minStars = -1;
-		int updatedAfterYear = 1970;
-		boolean isNotApi = false;
-		
+
+		String jarFile = "";
 		if (args.length > 3) {
 			// args[5] and beyond
 			for (int i = 3 ; i < args.length; i++) {
-				if (!args[i].startsWith("--")) {
-					String additionalKeywordsCommaSeparated = args[i];
+				if (args[i].startsWith("--plus=")) {
+					String additionalKeywordsCommaSeparated = args[i].split("--plus=")[1];
 					
 					additionalKeywordConstraints = Arrays.asList(additionalKeywordsCommaSeparated.split(","));
 				} else if (args[i].startsWith("--not=")) {
@@ -135,33 +105,55 @@ public class CallGraphAcrossProjects {
 					} catch (NumberFormatException e) {
 						throw new RuntimeException("invalid --star value. You gave " + args[i] + ", which could not be parsed and caused a NumberFormatException");
 					}
-				} else if (args[i].startsWith("--api=")) {
-					isNotApi = !Boolean.parseBoolean(args[i].split("--api=")[1]);
-				} else if (args[i].startsWith("--size=")) {
-					isPartitionedBySize = Boolean.parseBoolean(args[i].split("--size=")[1]);
-				} 
+				}  else if (args[i].startsWith("--jar=")) {
+					jarFile = args[i].split("--jar=")[1];
+				}  
 			}
 		}
 
-		System.out.println("You are searching for " + OutputUtils.ANSI_PURPLE + input + OutputUtils.ANSI_RESET);
-		System.out.println("The search space will " + OutputUtils.ANSI_BLUE   + (isPartitionedBySize ? "" : "NOT ") + "be partitioned by size " + OutputUtils.ANSI_RESET + "(required for scaling up beyond GitHub's search result limits)");
-		if (isNotApi) {
-			System.out.println("Types will NOT" + OutputUtils.ANSI_BLUE + " be resolved (--api=false)" + OutputUtils.ANSI_RESET );
-		}
-		if (minStars > 0) {
-			System.out.println("There is a minimum star threshold that the repo must exceed (" + minStars + ")");
+		// first traverse call graph and get all interesting methods
+		String simplifiedMethodName = args[0].replace("#", ":").split("\\(")[0];
+		Set<String> inputs = CallGraphRunner.findMethodsCallingTarget(simplifiedMethodName, jarFile);
+		
+		// transform call graph outputs into the format expected by ausearch
+		inputs = inputs.stream().map(name -> name.replace(":", "#")).collect(Collectors.toSet());
+				
+		System.out.println("searches will be on " + inputs);
+		
+		// then search usage of each method
+		for (String input : inputs.stream().limit(5).collect(Collectors.toList())) {
+			prepareSearch(args, additionalKeywordConstraints, input);
+			Set<String> filePaths = new HashSet<>(
+					App.runSearch(input, true, additionalKeywordConstraints, negativeKeywordConstraints, minStars, 1970, false)
+					);
+				
+			for (String filePath : filePaths) {
+				String jar = JarRetriever.getLikelyJarOf(new File(filePath));
+				
+				System.out.println("for " + input + ", got jar "+ jar);
+			}
 		}
 		
-		if (additionalKeywordConstraints.size() > 0 || negativeKeywordConstraints.size() > 0) {
-			System.out.println("Other keywords to pass to GitHub:");
-			System.out.println(OutputUtils.ANSI_BLUE + "additional (will be biased towards results with these words):" + OutputUtils.ANSI_RESET + String.join(",", additionalKeywordConstraints));
-			System.out.println(OutputUtils.ANSI_BLUE + "negative (will completely filter results with these words):" + OutputUtils.ANSI_RESET + String.join(",", negativeKeywordConstraints));
-		}
-	
-		System.out.println("");
+	}
 
+	private static void prepareSearch(String[] args, List<String> additionalKeywordConstraints, String input)
+			throws IOException {
+		// nastiness... because DATA_LOCATION in App is not constant
+		App.reset();
+		App.isRareApi = true;
+		App.synchronizedFeeder = new SynchronizedFeeder(args[2].split(","));
+		 
+		Query query = App.parseQuery(input, additionalKeywordConstraints, false);
+		String nameOfFolder = App.nameOfFolder(query, true);
 		
-		App.runSearch(args, input, isPartitionedBySize, additionalKeywordConstraints, negativeKeywordConstraints, minStars, updatedAfterYear, isNotApi);
+		if (new File(App.DATA_LOCATION + nameOfFolder).exists()) {
+			System.out.println("deleting..."); 
+			Files.walk(new File(App.DATA_LOCATION + nameOfFolder).toPath())
+		      .sorted(Comparator.reverseOrder())
+		      .map(Path::toFile)
+		      .forEach(File::delete);
+		}
+		// nastiness ends
 	}
 
 }

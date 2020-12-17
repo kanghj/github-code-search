@@ -74,7 +74,7 @@ public class Query {
 
 	@Override
 	public String toString() {
-		String query = "" + this.fullyQualifiedName + "#" + this.method;
+		String query = "" + this.fullyQualifiedName + "#" + this.method + " __ " + this.arguments.size();
 
 		return query;
 	}
