@@ -45,6 +45,25 @@
 	    <artifactId>commons-csv</artifactId>
 	    <version>1.7</version>
 	</dependency>
+	<!-- https://github.com/gousiosg/java-callgraph -->
+
+	<!-- 
+	    <groupId>gr.gousiosg</groupId>
+	    <artifactId>javacg</artifactId>
+	    <version>0.1-SNAPSHOT</version>
+	</dependency>
+	<dependency>-->
+	<dependency>
+	    <groupId>org.apache.bcel</groupId>
+	      <artifactId>bcel</artifactId>
+	      <version>6.2</version>
+	</dependency>
+	
+	<dependency>
+	    <groupId>gr.gousiosg</groupId>
+	    <artifactId>javacg</artifactId>
+	    <version>0.1-SNAPSHOT</version>
+	</dependency>
 	    
   </dependencies>
 

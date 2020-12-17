@@ -75,23 +75,7 @@ public class App {
 
 	// run multiple token
 
-	// parameter for the request
-	private static final String PARAM_QUERY = "q"; //$NON-NLS-1$
-	private static final String PARAM_PAGE = "page"; //$NON-NLS-1$
-	private static final String PARAM_PER_PAGE = "per_page"; //$NON-NLS-1$
-	private static final String PARAM_SORT = "sort";
-
-	// links from the response header
-	private static final String META_REL = "rel"; //$NON-NLS-1$
-	private static final String META_NEXT = "next"; //$NON-NLS-1$
-	private static final String DELIM_LINKS = ","; //$NON-NLS-1$
-	private static final String DELIM_LINK_PARAM = ";"; //$NON-NLS-1$
-
-	// response code from github
-	private static final int BAD_CREDENTIAL = 401;
-	private static final int RESPONSE_OK = 200;
-	private static final int ABUSE_RATE_LIMITS = 403;
-	private static final int UNPROCESSABLE_ENTITY = 422;
+	
 
 	// number of needed file to be resolved
 	private static int MAX_RESULT = 20; 
@@ -194,7 +178,7 @@ public class App {
 		runSearch(args, input, isPartitionedBySize, additionalKeywordConstraints, negativeKeywordConstraints, minStars, updatedAfterYear, isNotApi);
 	}
 
-	public static void runSearch(String[] args, String input, boolean isPartitionedBySize,
+	public static List<String> runSearch(String[] args, String input, boolean isPartitionedBySize,
 			List<String> additionalKeywordConstraints, List<String> negativeKeywordConstraints, 
 			int minStars, int updatedAfterYear, boolean isNotApi) {
 		Query query = parseQuery(input, additionalKeywordConstraints, isNotApi);
@@ -206,9 +190,14 @@ public class App {
 
 		initLabelFile();
 
-		processQuery(query, isPartitionedBySize, negativeKeywordConstraints, minStars, updatedAfterYear, isNotApi);
+		List<String> filePaths = processQuery(query, isPartitionedBySize, negativeKeywordConstraints, minStars, updatedAfterYear, isNotApi);
+		
+		// Done. Print metadata and statistics
+
+		writeMetadata();
 		
 		System.out.println("args were: " + Arrays.toString(args));
+		return filePaths;
 	}
 
 	private static void initLabelFile() {
@@ -252,7 +241,17 @@ public class App {
 		return codes;
 	}
 
-	private static void processQuery(Query query, boolean isSplitBySize, 
+	/**
+	 * 
+	 * @param query
+	 * @param isSplitBySize
+	 * @param negativeKeywordConstraint
+	 * @param minStars
+	 * @param updatedAfterYear
+	 * @param isNotApi
+	 * @return list of paths to the downloaded files
+	 */
+	private static List<String> processQuery(Query query, boolean isSplitBySize, 
 			List<String> negativeKeywordConstraint, int minStars, int updatedAfterYear, boolean isNotApi) {
 
 		String queryStr = query.toStringRequest();
@@ -264,8 +263,13 @@ public class App {
 
 		int id = 0;
 		Optional<String> nextUrlRequest = Optional.empty();
+		
+		List<String> output = new ArrayList<>();
 
 		while (resolvedFiles.getResolvedFiles().size() < MAX_RESULT && id < MAX_TO_INSPECT && lowerBound < 200_000) {
+			if (id % 50 == 0) {
+				logTimingStatistics();
+			}
 
 			Response response;
 			if (!nextUrlRequest.isPresent()) {
@@ -281,7 +285,7 @@ public class App {
 			
 				
 				if (response.getTotalCount() == 0) {
-					System.out.println("No item match with the query. Continuing");
+					System.out.println("No item matches the query. Continuing to the next partition (size-based)");
 					continue;
 				}
 			} else {
@@ -317,12 +321,11 @@ public class App {
 				if (debug) {
 					System.out.println("\tFile Url: " + htmlUrl);
 				} 
-				if (id % 50 == 0) {
-					logTimingStatistics();
-				}
+				
 				
 				try {
-					downloadAndResolveFile(id, htmlUrl, query, repoStarsForBatch.get(htmlUrl), negativeKeywordConstraint, minStars, isNotApi);
+					String downloadedPath = downloadAndResolveFile(id, htmlUrl, query, repoStarsForBatch.get(htmlUrl), negativeKeywordConstraint, minStars, isNotApi);
+					output.add(downloadedPath);
 				} catch (IOException e) {
 					e.printStackTrace();
 					throw new RuntimeException(e);
@@ -348,8 +351,10 @@ public class App {
 			}
 		}
 		
-		// Done. Print metadata and statistics
+		return output;
+	}
 
+	private static void writeMetadata() {
 		logTimingStatistics();
 		System.out.println();
 		System.out.println("\t\t===== Statistics about instances that we managed to resolve =====");
@@ -438,11 +443,11 @@ public class App {
 		return contentBuilder;
 	}
 
-	public static void downloadAndResolveFile(int id, String htmlUrl, Query query, int stars, 
+	public static String downloadAndResolveFile(int id, String htmlUrl, Query query, int stars, 
 			List<String> negativeKeywordConstraint, int minStars, boolean isNotApi) throws IOException {
 		Optional<String> filePathOpt = downloadFile(htmlUrl, id);
 		if (!filePathOpt.isPresent())
-			return;
+			return null;
 
 		String filePath = filePathOpt.get();
 
@@ -511,17 +516,20 @@ public class App {
 							.renameTo(new File(DATA_LOCATION + "files" + "/" + id + "." + className + ".txt"));
 					System.out.println(OutputUtils.ANSI_YELLOW +  "\tmoved file to "
 							+ new File(expectedFileLocation.toString() + "/" + className + ".txt") + OutputUtils.ANSI_RESET);
+					
+					return DATA_LOCATION + "files" + "/" + id + "." + className + ".txt";
 				} else {
 					// no package
 					Files.copy(new File(filePath).toPath(),
 							new File(DATA_LOCATION + "files" + "/" + id + "." + className + ".txt").toPath());
 					System.out.println(OutputUtils.ANSI_YELLOW + "\tcopied file to "
 							+ new File(DATA_LOCATION + "files" + "/" + id + "." + className + ".txt").toPath() + OutputUtils.ANSI_RESET);
-					
+				
+					return DATA_LOCATION + "files" + "/" + id + "." + className + ".txt";
 				}
 				
 
-				return;
+				
 			} else {
 				
 			}
@@ -547,6 +555,7 @@ public class App {
 		String oldFileDirectory = filePath.substring(0, filePath.lastIndexOf('/'));
 		new File(oldFileDirectory).delete();
 	
+		return null;
 	}
 
 
@@ -1058,7 +1067,7 @@ public class App {
 			System.out.println("Request: " + request);
 
 			responseCode = request.code();
-			if (responseCode == RESPONSE_OK) {
+			if (responseCode == Utils.RESPONSE_OK) {
 				response.setCode(responseCode);
 				JSONObject body = new JSONObject(request.body());
 				response.setTotalCount(body.getInt("total_count"));
@@ -1070,12 +1079,12 @@ public class App {
 					System.out.println("no 'next' header!");
 				}
 				response_ok = true;
-			} else if (responseCode == BAD_CREDENTIAL) {
+			} else if (responseCode == Utils.BAD_CREDENTIAL) {
 				System.out.println("Authorization problem");
 				System.out.println("Please read the readme file!");
 				System.out.println("Github message: " + (new JSONObject(request.body())).getString("message"));
 				System.exit(-1);
-			} else if (responseCode == ABUSE_RATE_LIMITS) {
+			} else if (responseCode == Utils.ABUSE_RATE_LIMITS) {
 				System.out.println("Received response code indicating Abuse Rate Limits");
 				// retry current progress after wait for a minute
 				String retryAfter = request.header("Retry-After");
@@ -1091,7 +1100,7 @@ public class App {
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
-			} else if (responseCode == UNPROCESSABLE_ENTITY) {
+			} else if (responseCode ==Utils.UNPROCESSABLE_ENTITY) {
 				System.out.println("Response Code: " + responseCode);
 				System.out.println("Unprocessable Entity: only the first 1000 search results are available");
 				System.out.println("See the documentation here: https://developer.github.com/v3/search/");
@@ -1109,7 +1118,7 @@ public class App {
 				}
 			}
 
-		} while (!response_ok && responseCode != UNPROCESSABLE_ENTITY);
+		} while (!response_ok && responseCode != Utils.UNPROCESSABLE_ENTITY);
 
 		synchronizedFeeder.releaseToken(token);
 
@@ -1167,17 +1176,17 @@ public class App {
 			HttpRequest request = HttpRequest.get(url, false).authorization("token " + token.getToken());
 
 			responseCode = request.code();
-			if (responseCode == RESPONSE_OK) {
+			if (responseCode == Utils.RESPONSE_OK) {
 				body = new JSONObject(request.body());
 				response_ok = true;
 //				System.out.println(body);
 		
-			} else if (responseCode == BAD_CREDENTIAL) {
+			} else if (responseCode == Utils.BAD_CREDENTIAL) {
 				System.out.println("Authorization problem");
 				System.out.println("Please read the readme file!");
 				System.out.println("Github message: " + (new JSONObject(request.body())).getString("message"));
 				System.exit(-1);
-			} else if (responseCode == ABUSE_RATE_LIMITS) {
+			} else if (responseCode == Utils.ABUSE_RATE_LIMITS) {
 				System.out.println("Received response code indicating Abuse Rate Limits");
 				// retry current progress after wait for a minute
 				
@@ -1200,7 +1209,7 @@ public class App {
 					System.out.println(request.headers());
 					throw new RuntimeException(e);
 				}
-			} else if (responseCode == UNPROCESSABLE_ENTITY) {
+			} else if (responseCode == Utils.UNPROCESSABLE_ENTITY) {
 				System.out.println("Response Code: " + responseCode);
 				System.out.println("Unprocessable Entity: only the first 1000 search results are available");
 				System.out.println("See the documentation here: https://developer.github.com/v3/search/");
@@ -1219,7 +1228,7 @@ public class App {
 				}
 			}
 
-		} while (!response_ok && responseCode != UNPROCESSABLE_ENTITY);
+		} while (!response_ok && responseCode != Utils.UNPROCESSABLE_ENTITY);
 
 		synchronizedFeeder.releaseToken(token);
 		return body;
@@ -1233,8 +1242,8 @@ public class App {
 
 		Response response = new Response();
 
-		String url = endpoint + "?" + PARAM_QUERY + "=" + query + "+size:" + size + "+in:file+language:java" + "&" + PARAM_PAGE + "="
-				+ page + "&" + PARAM_PER_PAGE + "=" + per_page_limit ;// +"&" + PARAM_SORT + "=indexed";
+		String url = endpoint + "?" + Utils.PARAM_QUERY + "=" + query + "+size:" + size + "+in:file+language:java" + "&" + Utils.PARAM_PAGE + "="
+				+ page + "&" + Utils.PARAM_PER_PAGE + "=" + per_page_limit ;// +"&" + PARAM_SORT + "=indexed";
 		response = handleGithubRequestWithUrl(url);
 
 		return response;
@@ -1245,9 +1254,9 @@ public class App {
 		String next = null;
 
 		if (linkHeader != null) {
-			String[] links = linkHeader.split(DELIM_LINKS);
+			String[] links = linkHeader.split(Utils.DELIM_LINKS);
 			for (String link : links) {
-				String[] segments = link.split(DELIM_LINK_PARAM);
+				String[] segments = link.split(Utils.DELIM_LINK_PARAM);
 				if (segments.length < 2)
 					continue;
 
@@ -1258,14 +1267,14 @@ public class App {
 
 				for (int i = 1; i < segments.length; i++) {
 					String[] rel = segments[i].trim().split("="); //$NON-NLS-1$
-					if (rel.length < 2 || !META_REL.equals(rel[0]))
+					if (rel.length < 2 || !Utils.META_REL.equals(rel[0]))
 						continue;
 
 					String relValue = rel[1];
 					if (relValue.startsWith("\"") && relValue.endsWith("\"")) //$NON-NLS-1$ //$NON-NLS-2$
 						relValue = relValue.substring(1, relValue.length() - 1);
 
-					if (META_NEXT.equals(relValue))
+					if (Utils.META_NEXT.equals(relValue))
 						next = linkPart;
 				}
 			}
@@ -1416,7 +1425,7 @@ public class App {
 
 		// handle response
 		int responseCode = request.code();
-		if (responseCode == RESPONSE_OK) {
+		if (responseCode == Utils.RESPONSE_OK) {
 			JSONObject body = new JSONObject(request.body());
 			JSONObject response = body.getJSONObject("response");
 			int numFound = response.getInt("numFound");

@@ -5,7 +5,7 @@ The queries and github access tokens are now passed in as command line arguments
 We only perform one query for each run, but more keywords can be added to the search query as needed to constrain the search.
 
 A deduplication process is performed for performance reasons as the cost of type resolution is high.
-Thus, this is a code-clone-aware code search, in which clones (copy-pasted code) of already downloaded projects are discarded.
+Thus, this is a code-clone-aware code search, in which clones (copy-pasted code) of already downloaded files are discarded.
 If type resolution is not required, then use "--api=false".
 
 ## Prerequisite
@@ -18,15 +18,14 @@ If type resolution is not required, then use "--api=false".
 Visit this [link](https://github.com/settings/tokens) to create a github access token. 
 
 
-## How to Run
+## How to Build
 
 ```
-<go to project directory>
-
 mvn clean compile assembly:single
 
 ```
 
+## How to Run
 
 java -cp target/github-code-search-1.0-SNAPSHOT-jar-with-dependencies.jar com.project.githubsearch.App "<fully qualified class name>#<method name>()" <# unique files> <access token> <split by size>
 
@@ -36,7 +35,7 @@ java -cp target/github-code-search-1.0-SNAPSHOT-jar-with-dependencies.jar com.pr
 java -cp target/github-code-search-1.0-SNAPSHOT-jar-with-dependencies.jar com.project.githubsearch.App "java.util.Map#get(x)" 10 <access token> 
 ```
 
-After execution, the downloaded projects will go into the "src/main/java/com/project/githubsearch/data" directory (TODO this will be fixed sooner or later).
+The downloaded projects go into the directory `src/main/java/com/project/githubsearch/data` (TODO this will be fixed sooner or later).
 
 One modification I made was to ignore the type of the arguments. Now, just pass in a bunch of strings (e.g. get(x), or <init>(x,y)
 `# types of files` are the number of unique source files you expect to receive. 
