@@ -47,6 +47,14 @@ public class SourceCodeAcceptor {
 	// threshold to be considered as clones
 	public static final float threshold = 0.8f;
 	
+	
+	public static void reset() {
+		canonicalCopies = new HashMap<>();
+		canonicalCopiesUrl = new HashMap<>();
+		canonicalCopiesCount = new HashMap<>();
+		canonicalCopiesResolvable = new HashMap<>();
+	}
+	
 	public static List<String> stripComments(List<String> lines) {
 		// we know its java
 		

@@ -102,6 +102,7 @@ public class App {
 	public static void reset() {
 		DATA_LOCATION = "src/main/java/com/project/githubsearch/data/";
 		DATA_LOCATION_FAILED = "src/main/java/com/project/githubsearch/failed_data/";
+		SourceCodeAcceptor.reset();
 	}
 	
 	public static void main(String[] args) {
@@ -277,7 +278,7 @@ public class App {
 
 		String queryStr = query.toStringRequest();
 
-		int lowerBound = 0, upperBound = isRareApi ? 1000 : 250, page, perPageLimit;
+		int lowerBound = 0, upperBound = isRareApi ? 3500 : 250, page, perPageLimit;
 
 		page = 1;
 		perPageLimit = 30;
@@ -302,17 +303,17 @@ public class App {
 				String size = lowerBound + ".." + upperBound;
 				response = handleCustomGithubRequest(queryStr, size, page, perPageLimit);
 
-				lowerBound += isRareApi ? 1000 : 250;
-				upperBound += isRareApi ? 1000 : 250;
+				lowerBound += isRareApi ? 3500 : 250;
+				upperBound += isRareApi ? 3500 : 250;
 
 				if (response.getTotalCount() == 0) {
 					System.out.println("No item matches the query. Continuing to the next partition (size-based)");
 					logTimingStatistics();
 
 					numberOfConsecutivePartitionsWithoutItems += 1;
-					if (numberOfConsecutivePartitionsWithoutItems >= 40) {
+					if (numberOfConsecutivePartitionsWithoutItems >= 25) {
 						System.out.println(
-								"failed too many times! No items for 40th time! Breaking. lower_bound=" + lowerBound);
+								"failed too many times! No items for 25th time! Breaking. lower_bound=" + lowerBound);
 						break;
 					}
 					continue;
@@ -935,6 +936,7 @@ public class App {
 
 		if (!isMethodMatch) {
 			System.out.println("\t\tNo method match : " + query.getMethod());
+			System.out.println("\t\t\tnames in file: " + methodCallNames);
 			if (debug) {
 				System.out.println("\t\t\tnames in file: " + methodCallNames);
 			}

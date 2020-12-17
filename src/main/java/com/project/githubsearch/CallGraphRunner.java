@@ -25,6 +25,7 @@ public class CallGraphRunner {
 	}
 
 	public static Set<String> findMethodsCallingTarget(String targetMethod, String jarFilePath) {
+		System.out.println("getting thing :" + targetMethod + " ... " + jarFilePath);
 		// get the output of java-callgraph
 		String callGraphOutput = extractCallGraph(jarFilePath);
 

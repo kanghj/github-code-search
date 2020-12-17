@@ -76,64 +76,92 @@ import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeS
  */
 public class CallGraphAcrossProjects {
 
-
 	public final static boolean debug = false;
 
 	public static void main(String[] args) throws IOException {
 
-
 		List<String> additionalKeywordConstraints = new ArrayList<>();
 		List<String> negativeKeywordConstraints = new ArrayList<>();
 
-		int minStars = -1;
 
 		String jarFile = "";
 		if (args.length > 3) {
 			// args[5] and beyond
-			for (int i = 3 ; i < args.length; i++) {
+			for (int i = 3; i < args.length; i++) {
 				if (args[i].startsWith("--plus=")) {
 					String additionalKeywordsCommaSeparated = args[i].split("--plus=")[1];
-					
+
 					additionalKeywordConstraints = Arrays.asList(additionalKeywordsCommaSeparated.split(","));
 				} else if (args[i].startsWith("--not=")) {
-					
+
 					String negativelKeywordsCommaSeparated = args[i].split("--not=")[1];
 					negativeKeywordConstraints = Arrays.asList(negativelKeywordsCommaSeparated.split(","));
-				} else if (args[i].startsWith("--star=")) {
-					try {
-						minStars = Integer.parseInt(args[i].split("--star=")[1]);
-					} catch (NumberFormatException e) {
-						throw new RuntimeException("invalid --star value. You gave " + args[i] + ", which could not be parsed and caused a NumberFormatException");
-					}
-				}  else if (args[i].startsWith("--jar=")) {
+				} else if (args[i].startsWith("--jar=")) {
 					jarFile = args[i].split("--jar=")[1];
-				}  
+				}
 			}
 		}
 
 		// first traverse call graph and get all interesting methods
 		String simplifiedMethodName = args[0].replace("#", ":").split("\\(")[0];
-		Set<String> inputs = CallGraphRunner.findMethodsCallingTarget(simplifiedMethodName, jarFile);
+
+		List<String> workList = new ArrayList<>();
+		workList.add(simplifiedMethodName);
+		Map<String, Set<String>> functionToJars = new HashMap<>(); // gives the jars that use a function
+		functionToJars.put(simplifiedMethodName, new HashSet<>());
+		functionToJars.get(simplifiedMethodName).add(jarFile);
+
+		getToWork(args, additionalKeywordConstraints, negativeKeywordConstraints, workList, functionToJars);
+
+	}
+
+	private static void getToWork(String[] args, List<String> additionalKeywordConstraints,
+			List<String> negativeKeywordConstraints, List<String> workList,
+			Map<String, Set<String>> functionToJars) throws IOException {
 		
-		// transform call graph outputs into the format expected by ausearch
-		inputs = inputs.stream().map(name -> name.replace(":", "#")).collect(Collectors.toSet());
-				
-		System.out.println("searches will be on " + inputs);
-		
-		// then search usage of each method
-		for (String input : inputs.stream().limit(5).collect(Collectors.toList())) {
-			prepareSearch(args, additionalKeywordConstraints, input);
-			Set<String> filePaths = new HashSet<>(
-					App.runSearch(input, true, additionalKeywordConstraints, negativeKeywordConstraints, minStars, 1970, false)
-					);
-				
-			for (String filePath : filePaths) {
-				String jar = JarRetriever.getLikelyJarOf(new File(filePath));
-				
-				System.out.println("for " + input + ", got jar "+ jar);
+		int i = 0;
+		Set<String> visited = new HashSet<>();
+		while (!workList.isEmpty()) {
+			i += 1;
+			if (i > 30) {
+				break;
+			}
+			String name = workList.remove(0);
+			visited.add(name);
+			for (String jarFile : functionToJars.get(name)) {
+
+				Set<String> inputs = CallGraphRunner.findMethodsCallingTarget(name, jarFile);
+
+				// transform call graph outputs into the format expected by ausearch
+				inputs = inputs.stream().map(input -> input.replace(":", "#")).collect(Collectors.toSet());
+
+				System.out.println("searches will be on " + inputs);
+
+				// then search usage of each method
+				for (String input : inputs.stream().limit(7).collect(Collectors.toList())) {
+					prepareSearch(args, additionalKeywordConstraints, input);
+					Set<String> filePaths = new HashSet<>(App.runSearch(input, true, additionalKeywordConstraints,
+							negativeKeywordConstraints, 5, 1970, false));
+
+					System.out.println();
+					System.out.println();
+					System.out.println("getting jars?");
+					System.out.println("filespthat = " + filePaths);
+					System.out.println();
+					functionToJars.put(input, new HashSet<>());
+					for (String filePath : filePaths) {
+						String jar = JarRetriever.getLikelyJarOf(new File(filePath));
+
+						System.out.println("for " + input + ", got jar " + jar);
+						functionToJars.get(input).add(jar);
+						
+						if (!visited.contains(input)) {
+							workList.add(input);
+						}
+					}
+				}
 			}
 		}
-		
 	}
 
 	private static void prepareSearch(String[] args, List<String> additionalKeywordConstraints, String input)
@@ -142,16 +170,14 @@ public class CallGraphAcrossProjects {
 		App.reset();
 		App.isRareApi = true;
 		App.synchronizedFeeder = new SynchronizedFeeder(args[2].split(","));
-		 
+
 		Query query = App.parseQuery(input, additionalKeywordConstraints, false);
 		String nameOfFolder = App.nameOfFolder(query, true);
-		
+
 		if (new File(App.DATA_LOCATION + nameOfFolder).exists()) {
-			System.out.println("deleting..."); 
-			Files.walk(new File(App.DATA_LOCATION + nameOfFolder).toPath())
-		      .sorted(Comparator.reverseOrder())
-		      .map(Path::toFile)
-		      .forEach(File::delete);
+			System.out.println("deleting...");
+			Files.walk(new File(App.DATA_LOCATION + nameOfFolder).toPath()).sorted(Comparator.reverseOrder())
+					.map(Path::toFile).forEach(File::delete);
 		}
 		// nastiness ends
 	}
