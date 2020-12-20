@@ -97,14 +97,19 @@ public class App {
 
 	public final static boolean debug = false;
 	public static boolean isRareApi = false;
+	public static int totalExpectedResults = -1;
 
 	
 	//tech debt!
+	// TODO fix bad API
 	public static void reset() {
 		DATA_LOCATION = "src/main/java/com/project/githubsearch/data/";
 		DATA_LOCATION_FAILED = "src/main/java/com/project/githubsearch/failed_data/";
 		SourceCodeAcceptor.reset();
 		resolvedFiles = new ResolvedFiles();
+		totalExpectedResults = -1;
+		starsOnRepo.clear();
+		isRareApi = false;	
 	}
 	
 	public static void main(String[] args) {
@@ -214,7 +219,19 @@ public class App {
 
 		initLabelFile();
 
-		List<String> filePaths = processQuery(query, isPartitionedBySize, negativeKeywordConstraints, minStars,
+		// use a initial request, without partitioning the results
+		// just do a quick hack... 
+		// TODO obviously, if we can already use this to get all our results, then we don't need to run more things again..
+		Response initialReq = handleCustomGithubRequest(query.toStringRequest(), 1, 50);
+		if (!isRareApi) {// if the user hasn't set it as rare API 
+			if (initialReq.getTotalCount() < 50) {
+				isRareApi = true;
+				totalExpectedResults = initialReq.getTotalCount(); // once reach this number of results, no need to proceed further. 
+			}
+		}
+		
+		
+		List<String> filePaths = processQuery(query, negativeKeywordConstraints, minStars,
 				updatedAfterYear, isNotApi);
 
 		// Done. Print metadata and statistics
@@ -278,7 +295,7 @@ public class App {
 	 * @param isNotApi
 	 * @return list of paths to the downloaded files
 	 */
-	private static List<String> processQuery(Query query, boolean isSplitBySize, List<String> negativeKeywordConstraint,
+	private static List<String> processQuery(Query query, List<String> negativeKeywordConstraint,
 			int minStars, int updatedAfterYear, boolean isNotApi) {
 
 		String queryStr = query.toStringRequest();
@@ -316,7 +333,7 @@ public class App {
 					logTimingStatistics();
 
 					numberOfConsecutivePartitionsWithoutItems += 1;
-					if (numberOfConsecutivePartitionsWithoutItems >= 35) {
+					if (numberOfConsecutivePartitionsWithoutItems >= 35 || (totalExpectedResults > -1 && id >= totalExpectedResults)) {
 						System.out.println(
 								"but we have failed too many times! There are no items for 35th time! Breaking. lower_bound=" + lowerBound);
 						break;
@@ -1309,6 +1326,20 @@ public class App {
 		Response response = new Response();
 
 		String url = endpoint + "?" + Utils.PARAM_QUERY + "=" + query + "+size:" + size + "+in:file+language:java" + "&"
+				+ Utils.PARAM_PAGE + "=" + page + "&" + Utils.PARAM_PER_PAGE + "=" + per_page_limit;// +"&" + PARAM_SORT
+																									// + "=indexed";
+		response = handleGithubRequestWithUrl(url);
+
+		return response;
+	}
+	
+	// without size
+	private static Response handleCustomGithubRequest(String query, int page, int per_page_limit) {
+		// The size range is exclusive
+
+		Response response = new Response();
+
+		String url = endpoint + "?" + Utils.PARAM_QUERY + "=" + query + "+in:file+language:java" + "&"
 				+ Utils.PARAM_PAGE + "=" + page + "&" + Utils.PARAM_PER_PAGE + "=" + per_page_limit;// +"&" + PARAM_SORT
 																									// + "=indexed";
 		response = handleGithubRequestWithUrl(url);
