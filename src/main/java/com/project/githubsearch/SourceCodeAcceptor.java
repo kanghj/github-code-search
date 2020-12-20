@@ -32,7 +32,7 @@ public class SourceCodeAcceptor {
 			} else if (this == NOT_ENOUGH_STARS) {
 				return "does not have enough stars";
 			}
-			return "unknown"; // it's not really imporatnt. just return a dummy value instead of throwing.
+			return "unknown"; // This function is not really important. Just return a dummy value instead of throwing if something went wrong.
 		}
 	}
 	
@@ -53,6 +53,7 @@ public class SourceCodeAcceptor {
 		canonicalCopiesUrl = new HashMap<>();
 		canonicalCopiesCount = new HashMap<>();
 		canonicalCopiesResolvable = new HashMap<>();
+		resolvable = 0;
 	}
 	
 	public static List<String> stripComments(List<String> lines) {

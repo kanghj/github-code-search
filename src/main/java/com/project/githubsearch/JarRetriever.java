@@ -113,7 +113,7 @@ public class JarRetriever {
 		if (importedPackages.size() > 0) {
 			String qualifiedName = importedPackages.get(0);
 			String[] names = qualifiedName.split("[.]");
-			String projectPackage = names[0].toString();
+
 			for (int i = 0; i < importedPackages.size(); i++) { 
 				qualifiedName = importedPackages.get(i);
 				names = qualifiedName.split("[.]");
@@ -152,12 +152,12 @@ public class JarRetriever {
 		for (int i = 0; i < mavenPackages.size(); i++) {
 			String pathToJar = downloadMavenJar(mavenPackages.get(i).getGroupId(),
 					mavenPackages.get(i).getArtifactId());
-			if (!pathToJar.equals("")) {
-				 System.out.println("Downloaded: " + pathToJar);
+			if (!pathToJar.isEmpty()) { 
+				System.out.println();
+				System.out.println("Downloaded: " + pathToJar);
 				jarsPath.add(pathToJar);
 			}
 		}
-
 		return jarsPath;
 	}
 

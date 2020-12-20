@@ -76,8 +76,9 @@ public class App {
 	// run multiple token
 
 	// number of needed file to be resolved
-	private static int MAX_RESULT = 20;
-	private static int MAX_TO_INSPECT = 50_000; // should increase this number?
+	// will be overwritten afterwards. These are not constants lol
+	public static int MAX_RESULT = 20;
+	public static int MAX_TO_INSPECT = 50_000; // should increase this number?
 
 	// folder location to save the downloaded files and jars
 	// HJ notes : these are not actually constants....
@@ -103,6 +104,7 @@ public class App {
 		DATA_LOCATION = "src/main/java/com/project/githubsearch/data/";
 		DATA_LOCATION_FAILED = "src/main/java/com/project/githubsearch/failed_data/";
 		SourceCodeAcceptor.reset();
+		resolvedFiles = new ResolvedFiles();
 	}
 	
 	public static void main(String[] args) {
@@ -111,7 +113,7 @@ public class App {
 
 		int numberToRetrieve = Integer.parseInt(args[1]);
 		MAX_RESULT = numberToRetrieve; // not exactly. This is the number of unique candidate-usage that is wanted
-		MAX_TO_INSPECT = MAX_RESULT * 20;
+		MAX_TO_INSPECT = MAX_RESULT * 20; // can't keep checking forever, we stop after looking at MAX_TO_INSPECT files
 
 		System.out.println("Maximum files to inspect=" + MAX_TO_INSPECT);
 
@@ -160,6 +162,9 @@ public class App {
 					isPartitionedBySize = Boolean.parseBoolean(args[i].split("--size=")[1]);
 				} else if (args[i].startsWith("--cocci=")) {
 					String cocciPath = args[i].split("--cocci=")[1]; // unused
+				} else if (args[i].startsWith("--rare=")) {
+					
+					isRareApi = Boolean.parseBoolean(args[i].split("--rare=")[1]);
 				}
 			}
 		}
@@ -278,7 +283,7 @@ public class App {
 
 		String queryStr = query.toStringRequest();
 
-		int lowerBound = 0, upperBound = isRareApi ? 3500 : 250, page, perPageLimit;
+		int lowerBound = 0, upperBound = isRareApi ? 5000 : 250, page, perPageLimit;
 
 		page = 1;
 		perPageLimit = 30;
@@ -303,17 +308,17 @@ public class App {
 				String size = lowerBound + ".." + upperBound;
 				response = handleCustomGithubRequest(queryStr, size, page, perPageLimit);
 
-				lowerBound += isRareApi ? 3500 : 250;
-				upperBound += isRareApi ? 3500 : 250;
+				lowerBound += isRareApi ? 5000 : 250;
+				upperBound += isRareApi ? 5000 : 250;
 
 				if (response.getTotalCount() == 0) {
 					System.out.println("No item matches the query. Continuing to the next partition (size-based)");
 					logTimingStatistics();
 
 					numberOfConsecutivePartitionsWithoutItems += 1;
-					if (numberOfConsecutivePartitionsWithoutItems >= 25) {
+					if (numberOfConsecutivePartitionsWithoutItems >= 35) {
 						System.out.println(
-								"failed too many times! No items for 25th time! Breaking. lower_bound=" + lowerBound);
+								"but we have failed too many times! There are no items for 35th time! Breaking. lower_bound=" + lowerBound);
 						break;
 					}
 					continue;
@@ -501,6 +506,7 @@ public class App {
 					negativeKeywordConstraint, minStars);
 		}
 		
+		System.out.print(OutputUtils.ANSI_WHITE + " \t.. from " + htmlUrl + OutputUtils.ANSI_RESET);
 		if (!lines.isEmpty() && !rejectReason.isPresent()) {
 
 			Optional<ResolvedFile> resolvedFileOpt;
@@ -613,13 +619,22 @@ public class App {
 		return DATA_LOCATION + "labels.csv";
 	}
 
+	
+	private static String lastLog;
 	private static void logTimingStatistics() {
 		Instant currentTime = Instant.now();
 		long timeElapsed = Duration.between(start, currentTime).toMillis();
 		long minutes = (timeElapsed / 1000) / 60;
 		long seconds = (timeElapsed / 1000) % 60;
 		long ms = (timeElapsed % 1000);
-		System.out.println("\tTotal elapsed time: " + minutes + " minutes " + seconds + " seconds " + ms + "ms");
+		String log = "\tTotal elapsed time: " + minutes + " minutes " + seconds + " seconds " + ms + "ms";
+		
+		if (lastLog != null && lastLog.equals(log)) {
+			return;
+		}
+		System.out.println(log);
+		
+		lastLog = log;
 	}
 
 	private static Optional<String> downloadFile(String htmlUrl, int fileId) {
@@ -647,7 +662,6 @@ public class App {
 			}
 
 			System.out.println(OutputUtils.ANSI_YELLOW + "\tdownloaded to " + pathFile + " for checking");
-			System.out.print(OutputUtils.ANSI_WHITE + " \t.. from " + htmlUrl + OutputUtils.ANSI_RESET);
 
 			FileOutputStream fileOutputStream = new FileOutputStream(pathFile);
 			fileOutputStream.getChannel().transferFrom(readableByteChannel, 0, Long.MAX_VALUE);
@@ -756,21 +770,21 @@ public class App {
 			}
 
 		} catch (ParseProblemException parseProblemException) {
-			System.out.println("===== Unable to parse");
+			System.out.println("===== Unable to parse (This is usually fine. We will ignore this file.) ===");
 			System.out.println("Exception is " + parseProblemException);
 			System.out.println("File location: " + pathFile);
 		} catch (IOException io) {
-			System.out.println("=== IO Exception in Type Resolution ===");
+			System.out.println("=== IO Exception in Type Resolution (This is usually fine. We will ignore this file.) ===");
 			System.out.println("Exception is " + io);
 			io.printStackTrace();
 			System.out.println("File location: " + pathFile);
 		} catch (RuntimeException runtimeException) {
-			System.out.println("=== Runtime Exception in Type Resolution ===");
+			System.out.println("=== Runtime Exception in Type Resolution. (This is usually fine. We will ignore this file.) ===");
 			System.out.println("Exception is " + runtimeException);
 			runtimeException.printStackTrace();
 			System.out.println("File location: " + pathFile);
 		} catch (java.lang.StackOverflowError stackOverflow) {
-			System.out.println("=== StackOverflowError in Type Resolution ===");
+			System.out.println("=== StackOverflowError in Type Resolution (This is usually fine. We will ignore this file.) ===");
 			System.out.println("Error is " + stackOverflow);
 			stackOverflow.printStackTrace();
 			System.out.println("File location: " + pathFile);
@@ -830,7 +844,7 @@ public class App {
 		if (!isMethodMatch) {
 			System.out.println("\t\tNo method match : " + query.getFullyQualifiedClassName());
 			System.out.println("\t\t = " + query);
-			System.out.println("\t\tnames in file: " + methodCallNames);
+//			System.out.println("\t\tnames in file: " + methodCallNames);
 			if (debug) {
 				System.out.println("\t\tnames in file: " + methodCallNames);
 			}
@@ -936,7 +950,7 @@ public class App {
 
 		if (!isMethodMatch) {
 			System.out.println("\t\tNo method match : " + query.getMethod());
-			System.out.println("\t\t\tnames in file: " + methodCallNames);
+//			System.out.println("\t\t\tnames in file: " + methodCallNames);
 			if (debug) {
 				System.out.println("\t\t\tnames in file: " + methodCallNames);
 			}
