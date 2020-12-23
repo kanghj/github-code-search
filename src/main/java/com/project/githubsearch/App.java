@@ -223,24 +223,32 @@ public class App {
 		// just do a quick hack... 
 		// TODO obviously, if we can already use this to get all our results, then we don't need to run more things again..
 		Response initialReq = handleCustomGithubRequest(query.toStringRequest(), 1, 50);
-		if (!isRareApi) {// if the user hasn't set it as rare API 
-			if (initialReq.getTotalCount() < 50) {
-				isRareApi = true;
-				totalExpectedResults = initialReq.getTotalCount(); // once reach this number of results, no need to proceed further. 
-			}
+		System.out.println("initial results size = " + initialReq.getTotalCount());
+		
+		if (initialReq.getTotalCount() == 0) {
+			// don't need to run anything...
+			logTimingStatistics();
+			System.out.println(OutputUtils.ANSI_YELLOW  + "There are no results at all. The search query might be malformed." + OutputUtils.ANSI_RESET);
+			return new ArrayList<>();
 		}
 		
+		if (!isRareApi) {// if the user hasn't set it as rare API 
+			if (initialReq.getTotalCount() < 50) {
+				System.out.println("initial results too few. Setting Rare API=true");
+				isRareApi = true;
+				System.out.println("totalExpectedResults = " + totalExpectedResults);
+			}
+		}
+		totalExpectedResults = initialReq.getTotalCount(); // once reach this number of results, no need to proceed further.
 		
 		List<String> filePaths = processQuery(query, negativeKeywordConstraints, minStars,
 				updatedAfterYear, isNotApi);
 
 		// Done. Print metadata and statistics
-
 		writeMetadata();
 
 		logTimingStatistics();
 
-		
 		return filePaths;
 	}
 
@@ -312,7 +320,7 @@ public class App {
 
 		int numberOfConsecutivePartitionsWithoutItems = 0; // once this gets large, we can terminate early
 
-		while (resolvedFiles.getResolvedFiles().size() < MAX_RESULT && id < MAX_TO_INSPECT && lowerBound < 150_000) {
+		while (resolvedFiles.getResolvedFiles().size() < MAX_RESULT && id < MAX_TO_INSPECT && lowerBound < 200_000) {
 			if (id % 50 == 0) {
 				logTimingStatistics();
 			}
@@ -329,15 +337,26 @@ public class App {
 				upperBound += isRareApi ? 5000 : 250;
 
 				if (response.getTotalCount() == 0) {
-					System.out.println("No item matches the query. Continuing to the next partition (size-based)");
+					System.out.println("No item matches the query. Continuing to the next partition (size-based) lower_bound=" + lowerBound);
 					logTimingStatistics();
 
 					numberOfConsecutivePartitionsWithoutItems += 1;
-					if (numberOfConsecutivePartitionsWithoutItems >= 35 || (totalExpectedResults > -1 && id >= totalExpectedResults)) {
+					boolean shouldBreakEarly = false;
+					if (numberOfConsecutivePartitionsWithoutItems >= 35 ) {
 						System.out.println(
-								"but we have failed too many times! There are no items for 35th time! Breaking. lower_bound=" + lowerBound);
+							"but we have failed too many times! There are no items for the 35th time! lower_bound=" + lowerBound);
+						shouldBreakEarly = true;
+					}
+					System.out.println("comparing " + totalExpectedResults + " with id=" + id);
+					if (totalExpectedResults >= 0 && id >= totalExpectedResults) {
+						System.out.println("seen total expected items = " + totalExpectedResults);
+						shouldBreakEarly = true;
+					}
+					if (shouldBreakEarly) {
+						System.out.println("Breaking");
 						break;
 					}
+					
 					continue;
 				}
 			} else {
@@ -368,6 +387,8 @@ public class App {
 			while (!data.isEmpty()) {
 				String htmlUrl = data.remove();
 				id++;
+				
+				
 
 				System.out.println();
 				System.out.println("\tID: " + id);
