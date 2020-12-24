@@ -30,17 +30,20 @@ public class CallGraphRunner {
 //				"io.undertow.server.handlers.RequestLimit#handleRequest(io.undertow.server.HttpServerExchange,io.undertow.server.HttpHandler)",
 //				"src/main/java/com/project/githubsearch/jars/rate-limit-latest.jar");
 
+		Map<String, List<String>>  targetsCalledBy = new HashMap<>();
 		Set<String> methodsCallingTarget = findMethodsCallingTarget(
 //				"handleRequest",
 //				"io.undertow.server.handlers.RequestLimit#handleRequest",
 //				"htmlEscaper",
 //				"com.google.common.html.HtmlEscapers#htmlEscaper()",
-				"net.lightbody.bmp.proxy.error.ProxyError:getHtml(java.lang.String)",
+//				"net.lightbody.bmp.proxy.error.ProxyError:getHtml(java.lang.String)",
 //				"getRequestReceiver",
+				"URIUtils#extractHost",
 //				"src/main/java/com/project/githubsearch/jars/rate-limit-latest.jar"
 //				"src/main/java/com/project/githubsearch/jars/ratpack-groovy-latest.jar",
-				"src/main/java/com/project/githubsearch/jars/browsermob-core-latest.jar",
-				new HashMap<>()
+//				"src/main/java/com/project/githubsearch/jars/browsermob-core-latest.jar",
+				"/Users/kanghongjin/Downloads/httpclient5-deps/httpclient5-5.0.3.original.jar",
+				targetsCalledBy
 				);
 //				"/Users/kanghongjin/Downloads/guava-30.0-jre.jar");
 		
@@ -48,6 +51,8 @@ public class CallGraphRunner {
 //				"src/main/java/com/project/githubsearch/jars/jboss-as-domain-http-interface-latest.jar");
 		System.out.println("ans=");
 		System.out.println(methodsCallingTarget);
+		System.out.println("===");
+		System.out.println(targetsCalledBy.get("org.apache.hc.client5.http.utils.URIUtils:extractHost(java.net.URI)"));
 		System.out.println("done");
 	}
 
@@ -113,19 +118,30 @@ public class CallGraphRunner {
 				nextItem = nextItem.trim();
 				
 				if (!targetCalledBy.get(currentMethod).contains(nextItem)) { 
-					targetCalledBy.get(currentMethod).add(nextItem);
+					targetCalledBy.get(currentMethod)
+									.add(nextItem);
+					System.out.println("updating calledBy : " + currentMethod + " <-> " + nextItem);
 				}
 				if (visited.contains(nextItem)) {
 					continue;
 				}
 				workList.add(nextItem);
 
-				if (nextItem.contains("$")) { // anonymous class/ lambdas etc... Look for their constructors instead
-					String nextItemClass = nextItem.split(":")[0];
+				if (nextItem.contains("$")) { // anonymous class/ lambdas ... Look at where their constructors are instead
+					String nextItemClass = nextItem.split(":")[0].trim();
 
 					if (constructors.containsKey(nextItemClass)) {
-						workList.addAll(constructors.get(nextItemClass).stream().filter(ctor -> !visited.contains(ctor))
-								.collect(Collectors.toList()));
+						List<String> unvisitedCtors = constructors.get(nextItemClass)
+								.stream()
+								.filter(ctor -> !visited.contains(ctor))
+								.collect(Collectors.toList());
+						workList.addAll(unvisitedCtors);
+						
+						// kinda... the ctor of an anonymous class "calls" the "execute" methods and whatever 
+						if (!targetCalledBy.containsKey(nextItem)) {
+							targetCalledBy.put(nextItem, new ArrayList<>());	
+						}
+						targetCalledBy.get(nextItem).addAll(unvisitedCtors);
 					}
 				}
 
@@ -136,7 +152,9 @@ public class CallGraphRunner {
 
 		// `visited` is what we want
 		// but anonymous classes can't be called, so let's not care about them
-		return visited.stream().filter(method -> !method.contains("$")).map(method -> method.trim())
+		return visited.stream()
+				.filter(method -> !method.contains("$"))
+				.map(method -> method.trim())
 				.collect(Collectors.toSet());
 
 	}
@@ -148,8 +166,8 @@ public class CallGraphRunner {
 		for (String line : callGraphOutput.split("\n")) {
 			if (line.contains("M:")) {
 
-				String method1 = line.split("M:")[1].split("\\([MIOSD]\\)")[0];
-				String method2 = line.split("\\([MIOSD]\\)")[1];
+				String method1 = line.split("M:")[1].split("\\([MIOSD]\\)")[0].trim();
+				String method2 = line.split("\\([MIOSD]\\)")[1].trim();
 
 				if (!calls.containsKey(method1)) {
 					calls.put(method1, new ArrayList<>());
@@ -186,11 +204,11 @@ public class CallGraphRunner {
 
 	private static void addToConstructors(Map<String, List<String>> constructors, String method1) {
 		if (method1.contains(":<init>")) {
-			String classOfMethod1 = method1.split(":<init")[0];
+			String classOfMethod1 = method1.split(":<init")[0].trim();
 			if (!constructors.containsKey(classOfMethod1)) {
 				constructors.put(classOfMethod1, new ArrayList<>());
 			}
-			constructors.get(classOfMethod1).add(method1);
+			constructors.get(classOfMethod1).add(method1.trim());
 		}
 	}
 

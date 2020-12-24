@@ -69,10 +69,16 @@ public class CallGraphAcrossProjects {
 
 	private static void getToWork(String token, int numberToRetrieve, List<String> additionalKeywordConstraints,
 			List<String> negativeKeywordConstraints, String simplifiedMethodName,
-			Map<String, Set<String>> functionToJars) throws IOException {
+			Map<String, Set<String>> jarsCallingFunction) throws IOException {
 
 		List<String> workList = new ArrayList<>();
 		workList.add(simplifiedMethodName);
+
+		Map<String, String> callgraphNodeToContainingJar = new HashMap<>();
+		// different from jarsCallingFunction
+		// callgraphNodeToContainingJar maps a function to the JAR File that contains it
+		// jarsCallingFunction maps a function to the JAR files that may be using the
+		// function
 
 		int i = 0;
 		Set<String> visited = new HashSet<>();
@@ -89,11 +95,17 @@ public class CallGraphAcrossProjects {
 			System.out.println();
 			System.out.println("WorkList: removing " + name);
 
-			for (String jarFile : functionToJars.get(name)) {
+			for (String jarFile : jarsCallingFunction.get(name)) {
 
 				Set<String> inputs;
 				try {
 					inputs = CallGraphRunner.findMethodsCallingTarget(name, jarFile, targetCalledBy);
+					for (String input : inputs) {
+						callgraphNodeToContainingJar.put(input,
+								// trim off the obvious stuff
+								jarFile.contains("src/main/java/com/project/githubsearch/jars/") ? jarFile.trim().split("src/main/java/com/project/githubsearch/jars/")[1] : jarFile
+						);
+					}
 				} catch (Exception e) {
 					e.printStackTrace();
 					System.out.println(
@@ -107,9 +119,9 @@ public class CallGraphAcrossProjects {
 				System.out.println("searches will be on " + inputs);
 
 				// then search usage of each method
-				for (String input : inputs.stream().limit(10).collect(Collectors.toList())) {
+				for (String input : inputs.stream().limit(30).collect(Collectors.toList())) {
 					if (visited.contains(input)) {
-						continue; // searches are expensive. Do not search the same thing twice.
+						continue; // searches are expensive. Do not run search for the same thing twice.
 					}
 					prepareSearch(token, numberToRetrieve, additionalKeywordConstraints, input);
 					Set<String> filePaths = new HashSet<>(App.runSearch(input, true, additionalKeywordConstraints,
@@ -120,23 +132,23 @@ public class CallGraphAcrossProjects {
 					System.out.println("getting jars?");
 					System.out.println("file paths = " + filePaths);
 					System.out.println();
-					functionToJars.put(input, new HashSet<>());
+					jarsCallingFunction.put(input, new HashSet<>());
 					for (String filePath : filePaths) {
 						String jar = JarRetriever.getLikelyJarOf(new File(filePath));
 
-						System.out.println("for " + input + ", got jar " + jar);
+						System.out.println("for " + input + ", adding jar " + jar);
 
 						if (!visited.contains(input)) {
 							System.out.println("WorkList: adding " + input);
 							workList.add(input);
-							visited.add(input); // this is needed so we don't add the same thing to worklist so many
+							visited.add(input); // so we don't add the same thing to worklist so many
 												// times
 						}
 
 						if (jar == null) {
 							continue;
 						}
-						functionToJars.get(input).add(jar);
+						jarsCallingFunction.get(input).add(jar);
 					}
 					visited.add(input); // needed if filePaths is empty
 				}
@@ -160,23 +172,11 @@ public class CallGraphAcrossProjects {
 		//
 
 		// write all possible 'chains' to an output file
-		writeCallChains(targetCalledBy, simplifiedMethodName, functionToJars);
+		writeCallChains(targetCalledBy, simplifiedMethodName, callgraphNodeToContainingJar);
 	}
 
-//	public static void main(String... args) {
-//		Map<String, List<String>> test = new HashMap<>();
-//		test.put("abc", Arrays.asList("def", "ghi"));
-//		test.put("ghi", Arrays.asList());
-//		test.put("qwerty", Arrays.asList());
-//		test.put("456", Arrays.asList());
-//		test.put("789", Arrays.asList());
-//		test.put("101", Arrays.asList());
-//		test.put("def", Arrays.asList("ghi", "qwerty"));
-//		test.put("123", Arrays.asList("456", "789", "101"));
-//		writeCallChains(test, "ok");
-//	}
-
-	private static void writeCallChains(Map<String, List<String>> targetCalledBy, String filename, Map<String, Set<String>> functionToJars) {
+	private static void writeCallChains(Map<String, List<String>> targetCalledBy, String filename,
+			Map<String, String> functionToJars) {
 
 		Set<String> notCalledByAnything = new HashSet<>();
 		for (Entry<String, List<String>> entry : targetCalledBy.entrySet()) {
@@ -187,7 +187,7 @@ public class CallGraphAcrossProjects {
 
 		List<List<String>> workList = new ArrayList<>();
 		for (String item : notCalledByAnything) {
-			workList.add(Arrays.asList(item + "@@" + functionToJars.get(item)));
+			workList.add(Arrays.asList(item.trim()));
 		}
 
 		Map<String, List<String>> targetCalls = new HashMap<>();
@@ -220,7 +220,7 @@ public class CallGraphAcrossProjects {
 			} else {
 				for (String next : nexts) {
 					List<String> nextItems = new ArrayList<>(items);
-					nextItems.add(next + "@@" + functionToJars.get(next));
+					nextItems.add(next.trim());
 					workList.add(nextItems);
 				}
 			}
@@ -229,14 +229,17 @@ public class CallGraphAcrossProjects {
 		System.out.println("write to call_chains_" + filename + ".txt");
 		try (BufferedWriter writer = new BufferedWriter(new FileWriter("call_chains_" + filename + ".txt"))) {
 			for (List<String> outputLine : outputCallChains) {
-				writer.write(String.join(";", Lists.reverse(outputLine)));
+				List<String> outputLineWithJar = outputLine.stream().map(item -> item + "@@" + functionToJars.get(item))
+						.collect(Collectors.toList());
+				writer.write(String.join(";", Lists.reverse(outputLineWithJar)));
+				writer.write("\n");
 				writer.write("\n");
 			}
 		} catch (IOException e) {
 			e.printStackTrace();
 			System.out.println("Unable to write call chains ...");
 		}
-		
+
 		// call chains with jar file
 	}
 
