@@ -127,7 +127,7 @@ public class CallGraphRunner {
 				}
 				workList.add(nextItem);
 
-				if (nextItem.contains("$")) { // anonymous class/ lambdas ... Look at where their constructors are instead
+				if (nextItem.split(":")[0].contains("$")) { // anonymous class/ lambdas ... Look at where their constructors are instead
 					String nextItemClass = nextItem.split(":")[0].trim();
 
 					if (constructors.containsKey(nextItemClass)) {
