@@ -119,7 +119,10 @@ public class CallGraphAcrossProjects {
 				System.out.println("searches will be on " + inputs);
 
 				// then search usage of each method
-				for (String input : inputs.stream().limit(30).collect(Collectors.toList())) {
+				for (String input : inputs.stream()
+						.limit(30)
+						.collect(Collectors.toList())) {
+					
 					if (visited.contains(input)) {
 						continue; // searches are expensive. Do not run search for the same thing twice.
 					}
@@ -160,7 +163,7 @@ public class CallGraphAcrossProjects {
 		System.out.println(visited); // need to store more info like which project?
 
 		System.out.println("call graph resembles what is shown below:");
-		// print edges first. FOr debugging
+		// print edges first. For debugging
 		for (Map.Entry<String, List<String>> entry : targetCalledBy.entrySet()) {
 			System.out.println(entry.getKey());
 			for (String item : entry.getValue()) {
@@ -213,8 +216,13 @@ public class CallGraphAcrossProjects {
 				continue;
 			}
 
-			List<String> nexts = targetCalls.get(items.get(items.size() - 1));
-
+			String mostRecentItem = items.get(items.size() - 1);
+			List<String> nexts = targetCalls.get(mostRecentItem);
+			
+			nexts = nexts.stream()
+					.filter(next -> !mostRecentItem.equals(next)) // prevent recursion on itself
+					.collect(Collectors.toList());
+			
 			if (nexts == null || nexts.isEmpty()) {
 				outputCallChains.add(items);
 			} else {
@@ -229,7 +237,8 @@ public class CallGraphAcrossProjects {
 		System.out.println("write to call_chains_" + filename + ".txt");
 		try (BufferedWriter writer = new BufferedWriter(new FileWriter("call_chains_" + filename + ".txt"))) {
 			for (List<String> outputLine : outputCallChains) {
-				List<String> outputLineWithJar = outputLine.stream().map(item -> item + "@@" + functionToJars.get(item))
+				List<String> outputLineWithJar = outputLine.stream()
+						.map(item -> item + "@@" + functionToJars.get(item))
 						.collect(Collectors.toList());
 				writer.write(String.join(";", Lists.reverse(outputLineWithJar)));
 				writer.write("\n");
