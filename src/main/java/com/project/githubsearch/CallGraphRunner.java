@@ -30,7 +30,7 @@ public class CallGraphRunner {
 //				"io.undertow.server.handlers.RequestLimit#handleRequest(io.undertow.server.HttpServerExchange,io.undertow.server.HttpHandler)",
 //				"src/main/java/com/project/githubsearch/jars/rate-limit-latest.jar");
 
-		Map<String, List<String>>  targetsCalledBy = new HashMap<>();
+		Map<String, Set<String>>  targetsCalledBy = new HashMap<>();
 		Set<String> methodsCallingTarget = findMethodsCallingTarget(
 //				"handleRequest",
 //				"io.undertow.server.handlers.RequestLimit#handleRequest",
@@ -63,7 +63,7 @@ public class CallGraphRunner {
 	 * @param targetCalledBy  modified to take the slice of the call graph relevant to targetMethod
 	 * @return
 	 */
-	public static Set<String> findMethodsCallingTarget(String targetMethod, String jarFilePath, Map<String, List<String>> targetCalledBy) {
+	public static Set<String> findMethodsCallingTarget(String targetMethod, String jarFilePath, Map<String, Set<String>> targetCalledBy) {
 		System.out.println("========");
 		if (targetMethod.contains("#")) {
 			targetMethod = targetMethod.replace("#", ":");
@@ -105,7 +105,7 @@ public class CallGraphRunner {
 			String currentMethod = workList.remove(0);
 			visited.add(currentMethod);
 			if (!targetCalledBy.containsKey(currentMethod)) {
-				targetCalledBy.put(currentMethod, new ArrayList<>());
+				targetCalledBy.put(currentMethod, new HashSet<>());
 			}
 
 			List<String> nextItems = calledBy.get(currentMethod);
@@ -127,7 +127,7 @@ public class CallGraphRunner {
 				}
 				workList.add(nextItem);
 
-				if (nextItem.split(":")[0].contains("$")) { // anonymous class/ lambdas ... Look at where their constructors are instead
+				if (nextItem.split(":")[0].contains("$") && nextItem.split(":")[0].split("\\$")[1].matches("\\d")) { // anonymous class/ lambdas ... Look at where their constructors are instead
 					String nextItemClass = nextItem.split(":")[0].trim();
 
 					if (constructors.containsKey(nextItemClass)) {
@@ -139,7 +139,7 @@ public class CallGraphRunner {
 						
 						// kinda... the ctor of an anonymous class "calls" the "execute" methods and whatever 
 						if (!targetCalledBy.containsKey(nextItem)) {
-							targetCalledBy.put(nextItem, new ArrayList<>());	
+							targetCalledBy.put(nextItem, new HashSet<>());	
 						}
 						targetCalledBy.get(nextItem).addAll(unvisitedCtors);
 					}

@@ -82,7 +82,7 @@ public class CallGraphAcrossProjects {
 
 		int i = 0;
 		Set<String> visited = new HashSet<>();
-		Map<String, List<String>> targetCalledBy = new HashMap<>(); // this tracks the callgraph of `visited` across
+		Map<String, Set<String>> targetCalledBy = new HashMap<>(); // this tracks the callgraph of `visited` across
 																	// multiple projects
 
 		while (!workList.isEmpty()) {
@@ -164,7 +164,7 @@ public class CallGraphAcrossProjects {
 
 		System.out.println("call graph resembles what is shown below:");
 		// print edges first. For debugging
-		for (Map.Entry<String, List<String>> entry : targetCalledBy.entrySet()) {
+		for (Map.Entry<String, Set<String>> entry : targetCalledBy.entrySet()) {
 			System.out.println(entry.getKey());
 			for (String item : entry.getValue()) {
 				System.out.println("\t -> " + item);
@@ -175,65 +175,15 @@ public class CallGraphAcrossProjects {
 		//
 
 		// write all possible 'chains' to an output file
-		writeCallChains(targetCalledBy, simplifiedMethodName, callgraphNodeToContainingJar);
+		List<List<String>> outputCallChains = constructCallChains(targetCalledBy);
+
+		writeCallChains(simplifiedMethodName, callgraphNodeToContainingJar, outputCallChains);		
 	}
 
-	private static void writeCallChains(Map<String, List<String>> targetCalledBy, String filename,
-			Map<String, String> functionToJars) {
 
-		Set<String> notCalledByAnything = new HashSet<>();
-		for (Entry<String, List<String>> entry : targetCalledBy.entrySet()) {
-			if (entry.getValue().isEmpty()) {
-				notCalledByAnything.add(entry.getKey());
-			}
-		}
 
-		List<List<String>> workList = new ArrayList<>();
-		for (String item : notCalledByAnything) {
-			workList.add(Arrays.asList(item.trim()));
-		}
-
-		Map<String, List<String>> targetCalls = new HashMap<>();
-		for (Entry<String, List<String>> entry : targetCalledBy.entrySet()) {
-			for (String item : entry.getValue()) {
-				if (!targetCalls.containsKey(item)) {
-					targetCalls.put(item, new ArrayList<>());
-				}
-				targetCalls.get(item).add(entry.getKey());
-			}
-		}
-
-		List<List<String>> outputCallChains = new ArrayList<>();
-
-		while (!workList.isEmpty()) {
-			List<String> items = workList.remove(0);
-//			System.out.println("looking at " + items);
-			if (items.size() > 25) {
-				// probably, we messed up somewhere
-				System.out.println(
-						"call chain is >25 items. Probably messed up somewhere. Will not continue on this chain to prevent infinite loops");
-				outputCallChains.add(items); // just add this long chain as an answer.
-				continue;
-			}
-
-			String mostRecentItem = items.get(items.size() - 1);
-			List<String> nexts = targetCalls.get(mostRecentItem);
-			
-			nexts = nexts.stream()
-					.filter(next -> !mostRecentItem.equals(next)) // prevent recursion on itself
-					.collect(Collectors.toList());
-			
-			if (nexts == null || nexts.isEmpty()) {
-				outputCallChains.add(items);
-			} else {
-				for (String next : nexts) {
-					List<String> nextItems = new ArrayList<>(items);
-					nextItems.add(next.trim());
-					workList.add(nextItems);
-				}
-			}
-		}
-
+	private static void writeCallChains(String filename, Map<String, String> functionToJars,
+			List<List<String>> outputCallChains) {
 		System.out.println("write to call_chains_" + filename + ".txt");
 		try (BufferedWriter writer = new BufferedWriter(new FileWriter("call_chains_" + filename + ".txt"))) {
 			for (List<String> outputLine : outputCallChains) {
@@ -248,8 +198,65 @@ public class CallGraphAcrossProjects {
 			e.printStackTrace();
 			System.out.println("Unable to write call chains ...");
 		}
+	}
 
-		// call chains with jar file
+	private static List<List<String>> constructCallChains(Map<String, Set<String>> targetCalledBy) {
+		Set<String> notCalledByAnything = new HashSet<>();
+		for (Entry<String, Set<String>> entry : targetCalledBy.entrySet()) {
+			if (entry.getValue().isEmpty()) {
+				notCalledByAnything.add(entry.getKey());
+			}
+		}
+
+		List<List<String>> workList = new ArrayList<>();
+		for (String item : notCalledByAnything) {
+			workList.add(Arrays.asList(item.trim()));
+		}
+
+		Map<String, List<String>> targetCalls = new HashMap<>();
+		for (Entry<String, Set<String>> entry : targetCalledBy.entrySet()) {
+			for (String item : entry.getValue()) {
+				if (!targetCalls.containsKey(item)) {
+					targetCalls.put(item, new ArrayList<>());
+				}
+				targetCalls.get(item).add(entry.getKey());
+			}
+		}
+
+		List<List<String>> outputCallChains = new ArrayList<>();
+
+		while (!workList.isEmpty()) {
+			List<String> items = workList.remove(0);
+//			System.out.println("looking at " + items);
+			if (items.size() > 15) {
+				// probably, we messed up somewhere
+				System.out.println(
+						"call chain is >15 items. Probably messed up somewhere. Will not continue on this chain to prevent infinite loops");
+				outputCallChains.add(items); // just add this long chain as an answer.
+				continue;
+			}
+
+			String mostRecentItem = items.get(items.size() - 1);
+			List<String> nexts = targetCalls.get(mostRecentItem);
+			if (nexts == null) {
+				outputCallChains.add(items);
+			} else {
+				nexts = nexts.stream()
+						.filter(next -> !mostRecentItem.equals(next)) // prevent recursion on itself
+						.collect(Collectors.toList());
+				
+				if (nexts.isEmpty()) {
+					outputCallChains.add(items);
+				} else {
+					for (String next : nexts) {
+						List<String> nextItems = new ArrayList<>(items);
+						nextItems.add(next.trim());
+						workList.add(nextItems);
+					}
+				}
+			}
+		}
+		return outputCallChains;
 	}
 
 	private static void prepareSearch(String token, int numberToRetrieve, List<String> additionalKeywordConstraints,
