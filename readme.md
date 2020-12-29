@@ -8,6 +8,11 @@ A deduplication process is performed for performance reasons as the cost of type
 Thus, this is a code-clone-aware code search, in which clones (copy-pasted code) of already downloaded files are discarded.
 If type resolution is not required, then use "--api=false".
 
+
+## Call graphs
+
+A new dependency is https://github.com/gousiosg/java-callgraph. Clone that and mvn install it before building this project.
+
 ## Prerequisite
 
 - JDK8
@@ -19,6 +24,8 @@ Visit this [link](https://github.com/settings/tokens) to create a github access 
 
 
 ## How to Build
+
+Clone https://github.com/gousiosg/java-callgraph and `mvn install` it. Then run on this project
 
 ```
 mvn clean compile assembly:single
