@@ -40,6 +40,9 @@ java -cp target/github-code-search-1.0-SNAPSHOT-jar-with-dependencies.jar com.pr
 java -cp target/github-code-search-1.0-SNAPSHOT-jar-with-dependencies.jar com.project.githubsearch.App "java.io.ByteArrayOutputStream#toByteArray()" 10 <access token> 
 
 java -cp target/github-code-search-1.0-SNAPSHOT-jar-with-dependencies.jar com.project.githubsearch.App "java.util.Map#get(x)" 10 <access token> 
+
+// for finding methods in client projects that call a given method from a library
+java -cp target/github-code-search-1.0-SNAPSHOT-jar-with-dependencies.jar com.project.githubsearch.CallGraphAcrossProjects "checkPassword" 100 <access token>  --jar=~/Downloads/bcprov-jdk15on-1.66.jar
 ```
 
 The downloaded projects go into the directory `src/main/java/com/project/githubsearch/data` (TODO this will be fixed sooner or later).
