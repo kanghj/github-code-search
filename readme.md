@@ -12,6 +12,7 @@ If type resolution is not required, then use "--api=false".
 ## Call graphs
 
 A new dependency is https://github.com/gousiosg/java-callgraph. Clone that and mvn install it before building this project.
+Note https://github.com/gousiosg/java-callgraph/issues/30. Make the modifications as suggested in that issue if you run into ArrayIndexOutOfBoundsException
 
 ## Prerequisite
 
