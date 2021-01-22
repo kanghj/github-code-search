@@ -808,21 +808,21 @@ public class App {
 			}
 
 		} catch (ParseProblemException parseProblemException) {
-			System.out.println("===== Unable to parse (This is usually fine. We will ignore this file.) ===");
+			System.out.println("===== Unable to parse (This is usually fine, we will ignore this file.) ===");
 			System.out.println("Exception is " + parseProblemException);
 			System.out.println("File location: " + pathFile);
 		} catch (IOException io) {
-			System.out.println("=== IO Exception in Type Resolution (This is usually fine. We will ignore this file.) ===");
+			System.out.println("=== IO Exception during type resolution (This is usually fine, we will ignore this file.) ===");
 			System.out.println("Exception is " + io);
 			io.printStackTrace();
 			System.out.println("File location: " + pathFile);
 		} catch (RuntimeException runtimeException) {
-			System.out.println("=== Runtime Exception in Type Resolution. (This is usually fine. We will ignore this file.) ===");
+			System.out.println("=== Runtime Exception during type resolution. (This is usually fine, we will ignore this file.) ===");
 			System.out.println("Exception is " + runtimeException);
 			runtimeException.printStackTrace();
 			System.out.println("File location: " + pathFile);
 		} catch (java.lang.StackOverflowError stackOverflow) {
-			System.out.println("=== StackOverflowError in Type Resolution (This is usually fine. We will ignore this file.) ===");
+			System.out.println("=== StackOverflowError during type resolution (This is usually fine, we will ignore this file.) ===");
 			System.out.println("Error is " + stackOverflow);
 			stackOverflow.printStackTrace();
 			System.out.println("File location: " + pathFile);

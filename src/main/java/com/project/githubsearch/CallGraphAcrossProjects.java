@@ -55,7 +55,7 @@ public class CallGraphAcrossProjects {
 		}
 
 		// first traverse call graph and get all interesting methods
-		String simplifiedMethodName = args[0].replace("#", ":").split("\\(")[0];
+		String simplifiedMethodName = args[0].replace("#", ":");
 
 		// TODO awkward API here
 		Map<String, Set<String>> functionToJars = new HashMap<>(); // tracks the jars that use a function
@@ -101,6 +101,8 @@ public class CallGraphAcrossProjects {
 				try {
 					inputs = CallGraphRunner.findMethodsCallingTarget(name, jarFile, targetCalledBy);
 					for (String input : inputs) {
+						if (callgraphNodeToContainingJar.containsKey(input)) 
+							continue;
 						callgraphNodeToContainingJar.put(input,
 								// trim off the obvious stuff
 								jarFile.contains("src/main/java/com/project/githubsearch/jars/") ? jarFile.trim().split("src/main/java/com/project/githubsearch/jars/")[1] : jarFile
@@ -128,7 +130,7 @@ public class CallGraphAcrossProjects {
 					}
 					prepareSearch(token, numberToRetrieve, additionalKeywordConstraints, input);
 					Set<String> filePaths = new HashSet<>(App.runSearch(input, true, additionalKeywordConstraints,
-							negativeKeywordConstraints, 10, 1970, false));
+							negativeKeywordConstraints, 5, 1970, false));
 
 					System.out.println();
 					System.out.println();
@@ -228,11 +230,11 @@ public class CallGraphAcrossProjects {
 		while (!workList.isEmpty()) {
 			List<String> items = workList.remove(0);
 //			System.out.println("looking at " + items);
-			if (items.size() > 15) {
+			if (items.size() > 20) {
 				// probably, we messed up somewhere
-				System.out.println(
-						"call chain is >15 items. Probably messed up somewhere. Will not continue on this chain to prevent infinite loops");
-				outputCallChains.add(items); // just add this long chain as an answer.
+//				System.out.println(
+//						"call chain is >20 items. Probably messed up somewhere. Will not continue on this chain to prevent infinite loops");
+//				outputCallChains.add(items); // just add this long chain as an answer.
 				continue;
 			}
 

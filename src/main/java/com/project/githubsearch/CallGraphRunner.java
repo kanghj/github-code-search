@@ -30,6 +30,7 @@ public class CallGraphRunner {
 //				"io.undertow.server.handlers.RequestLimit#handleRequest(io.undertow.server.HttpServerExchange,io.undertow.server.HttpHandler)",
 //				"src/main/java/com/project/githubsearch/jars/rate-limit-latest.jar");
 
+		
 		Map<String, Set<String>>  targetsCalledBy = new HashMap<>();
 		Set<String> methodsCallingTarget = findMethodsCallingTarget(
 //				"handleRequest",
@@ -54,6 +55,30 @@ public class CallGraphRunner {
 		System.out.println("===");
 		System.out.println(targetsCalledBy.get("org.apache.hc.client5.http.utils.URIUtils:extractHost(java.net.URI)"));
 		System.out.println("done");
+		
+		
+		
+		try {
+			String callGraphOutput = extractCallGraph("/Users/kanghongjin/Downloads/bcprov-jdk15on-1.66.jar");
+			
+			Map<String, List<String>> calls = new HashMap<>();
+			Map<String, List<String>> calledBy = new HashMap<>();
+
+			// additional info.
+			Map<String, List<String>> constructors = new HashMap<>();
+
+			extractCallGraphInformation(callGraphOutput, calls, calledBy, constructors);
+
+//			System.out.println(calls.keySet());
+//			System.out.println(calledBy.keySet());
+//			String fullySpecifiedTargetMethod = getFQN("org.bouncycastle.crypto.generators.OpenBSDBCrypt:checkPassword(java.lang.String,byte[])", "src/main/java/com/project/githubsearch/jars/ldapchai-latest.jar", calls, calledBy);
+			
+//			System.out.println(getMethods());
+		} catch (Exception e) {
+			e.printStackTrace();
+			throw new RuntimeException(e);
+			
+		}
 	}
 
 	/**
@@ -257,7 +282,7 @@ public class CallGraphRunner {
 				if (entry.isDirectory() || !entry.getName().endsWith(".class")) {
 					continue;
 				}
-					
+				
 				ClassParser cp = new ClassParser(f, entry.getName());
 				methodNames.addAll(new CallGraphClassVisitor(cp.parse()).getMethods());
 			}

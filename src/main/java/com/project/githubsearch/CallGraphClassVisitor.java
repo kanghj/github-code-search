@@ -27,9 +27,12 @@ public class CallGraphClassVisitor extends EmptyVisitor {
     public CallGraphClassVisitor(JavaClass jc) {
         clazzName = jc.getClassName();
 
+    
     	Method[] methods = jc.getMethods();
         for (int i = 0; i < methods.length; i++) {
             Method method = methods[i];
+            
+            
             method.accept(this);
         }
         
