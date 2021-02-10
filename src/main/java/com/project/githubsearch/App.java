@@ -98,6 +98,7 @@ public class App {
 	public final static boolean debug = false;
 	public static boolean isRareApi = false;
 	public static int totalExpectedResults = -1;
+	public static String repo;
 
 	
 	//tech debt!
@@ -110,6 +111,7 @@ public class App {
 		totalExpectedResults = -1;
 		starsOnRepo.clear();
 		isRareApi = false;	
+		repo = null;
 	}
 	
 	public static void main(String[] args) {
@@ -137,6 +139,7 @@ public class App {
 		int minStars = -1;
 		int updatedAfterYear = 1970;
 		boolean isNotApi = false;
+		
 		if (args.length > 3) {
 			// args[5] and beyond
 			for (int i = 3; i < args.length; i++) {
@@ -156,8 +159,8 @@ public class App {
 					try {
 						minStars = Integer.parseInt(args[i].split("--star=")[1]);
 					} catch (NumberFormatException e) {
-						throw new RuntimeException("invalid --star value. You gave " + args[i]
-								+ ", which could not be parsed and caused a NumberFormatException");
+						throw new RuntimeException("invalid --star value. You provided --star=" + args[i]
+								+ ", which could not be parsed, causing a NumberFormatException");
 					}
 				} else if (args[i].startsWith("--updated_after=")) {
 					updatedAfterYear = Integer.parseInt(args[i].split("--updated_after=")[1]);
@@ -170,6 +173,9 @@ public class App {
 				} else if (args[i].startsWith("--rare=")) {
 					
 					isRareApi = Boolean.parseBoolean(args[i].split("--rare=")[1]);
+				} else if (args[i].startsWith("--repo=")) {
+					
+					repo = args[i].split("--repo=")[1];
 				}
 			}
 		}
@@ -201,18 +207,18 @@ public class App {
 		System.out.println("");
 
 		runSearch(input, isPartitionedBySize, additionalKeywordConstraints, negativeKeywordConstraints, minStars,
-				updatedAfterYear, isNotApi);
+				updatedAfterYear, isNotApi, repo);
 		System.out.println("args were: " + Arrays.toString(args));
 	}
 
 	public static List<String> runSearch(String input, boolean isPartitionedBySize,
 			List<String> additionalKeywordConstraints, List<String> negativeKeywordConstraints, int minStars,
-			int updatedAfterYear, boolean isNotApi) {
+			int updatedAfterYear, boolean isNotApi, String repo) {
 		Query query = parseQuery(input, additionalKeywordConstraints, isNotApi);
 
 		printQuery(query);
 
-		initUniqueFolderToSaveData(query, isPartitionedBySize);
+		initUniqueFolderToSaveData(query, isPartitionedBySize, repo);
 		if (start == null) {
 			start = Instant.now();
 		}
@@ -222,7 +228,7 @@ public class App {
 		// use a initial request, without partitioning the results
 		// just do a quick hack... 
 		// TODO obviously, if we can already use this to get all our results, then we don't need to run more things again..
-		Response initialReq = handleCustomGithubRequest(query.toStringRequest(), 1, 50);
+		Response initialReq = handleCustomGithubRequest(query.toStringRequest(), 1, 50, repo);
 		System.out.println("initial results size = " + initialReq.getTotalCount());
 		
 		if (initialReq.getTotalCount() == 0) {
@@ -1066,9 +1072,9 @@ public class App {
 		return query;
 	}
 
-	private static void initUniqueFolderToSaveData(Query query, boolean isSplitBySize) {
+	private static void initUniqueFolderToSaveData(Query query, boolean isSplitBySize, String repo) {
 
-		String folderName = nameOfFolder(query, isSplitBySize);
+		String folderName = nameOfFolder(query, isSplitBySize, repo);
 
 		makeFileResolutionLocation(folderName);
 
@@ -1083,10 +1089,14 @@ public class App {
 
 	}
 
-	public static String nameOfFolder(Query query, boolean isSplitBySize) {
+	public static String nameOfFolder(Query query, boolean isSplitBySize, String repo) {
 		String folderName = query.getFullyQualifiedClassName() + "__" + query.getMethod() + "__"
 				+ query.getArguments().size();
 
+		if (repo != null) {
+			folderName += "__" + repo.replace("/", "_");
+		}
+		
 		if (!query.getAdditionalKeywords().isEmpty()) {
 			folderName += query.getAdditionalKeywords();
 		}
@@ -1355,14 +1365,17 @@ public class App {
 	}
 	
 	// without size
-	private static Response handleCustomGithubRequest(String query, int page, int per_page_limit) {
+	private static Response handleCustomGithubRequest(String query, int page, int per_page_limit, String repo) {
 		// The size range is exclusive
 
 		Response response = new Response();
 
-		String url = endpoint + "?" + Utils.PARAM_QUERY + "=" + query + "+in:file+language:java" + "&"
+		String url = endpoint + "?" + Utils.PARAM_QUERY + "=" + query + "+in:file+language:java" +
+				(repo != null ? "+repo:" + repo : "")
+				+ "&"
 				+ Utils.PARAM_PAGE + "=" + page + "&" + Utils.PARAM_PER_PAGE + "=" + per_page_limit;// +"&" + PARAM_SORT
 																									// + "=indexed";
+
 		response = handleGithubRequestWithUrl(url);
 
 		return response;

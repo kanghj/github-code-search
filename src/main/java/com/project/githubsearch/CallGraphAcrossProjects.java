@@ -130,7 +130,7 @@ public class CallGraphAcrossProjects {
 					}
 					prepareSearch(token, numberToRetrieve, additionalKeywordConstraints, input);
 					Set<String> filePaths = new HashSet<>(App.runSearch(input, true, additionalKeywordConstraints,
-							negativeKeywordConstraints, 5, 1970, false));
+							negativeKeywordConstraints, 5, 1970, false, null));
 
 					System.out.println();
 					System.out.println();
@@ -269,7 +269,7 @@ public class CallGraphAcrossProjects {
 		App.synchronizedFeeder = new SynchronizedFeeder(new String[] { token });
 
 		Query query = App.parseQuery(input, additionalKeywordConstraints, false);
-		String nameOfFolder = App.nameOfFolder(query, true);
+		String nameOfFolder = App.nameOfFolder(query, true, null);
 
 		if (new File(App.DATA_LOCATION + nameOfFolder).exists()) {
 			System.out.println("deleting...");
