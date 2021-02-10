@@ -141,7 +141,7 @@ public class App {
 		boolean isNotApi = false;
 		
 		if (args.length > 3) {
-			// args[5] and beyond
+			// args[3] and beyond
 			for (int i = 3; i < args.length; i++) {
 				if (!args[i].startsWith("--")) {
 					String additionalKeywordsCommaSeparated = args[i];
@@ -201,6 +201,10 @@ public class App {
 		}
 		if (updatedAfterYear != 1970) {
 			System.out.println(OutputUtils.ANSI_RED + "Updated after IS NOT IMPLEMENTED. IT WILl BE IGNORED"
+					+ OutputUtils.ANSI_RESET);
+		}
+		if (repo != null) {
+			System.out.println(OutputUtils.ANSI_BLUE + "Searching only in repo " + repo 
 					+ OutputUtils.ANSI_RESET);
 		}
 
@@ -337,7 +341,7 @@ public class App {
 				page = 1;
 
 				String size = lowerBound + ".." + upperBound;
-				response = handleCustomGithubRequest(queryStr, size, page, perPageLimit);
+				response = handleCustomGithubRequest(queryStr, size, page, perPageLimit, repo);
 
 				lowerBound += isRareApi ? 5000 : 250;
 				upperBound += isRareApi ? 5000 : 250;
@@ -1351,12 +1355,14 @@ public class App {
 		return body;
 	}
 
-	private static Response handleCustomGithubRequest(String query, String size, int page, int per_page_limit) {
+	private static Response handleCustomGithubRequest(String query, String size, int page, int per_page_limit, String repo) {
 		// The size range is exclusive
 
 		Response response = new Response();
 
-		String url = endpoint + "?" + Utils.PARAM_QUERY + "=" + query + "+size:" + size + "+in:file+language:java" + "&"
+		String url = endpoint + "?" + Utils.PARAM_QUERY + "=" + query + "+size:" + size + "+in:file+language:java" + 
+				(repo != null ? "+repo:" + repo : "")
+				+ "&"
 				+ Utils.PARAM_PAGE + "=" + page + "&" + Utils.PARAM_PER_PAGE + "=" + per_page_limit;// +"&" + PARAM_SORT
 																									// + "=indexed";
 		response = handleGithubRequestWithUrl(url);
