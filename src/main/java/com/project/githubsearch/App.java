@@ -54,12 +54,16 @@ import com.github.javaparser.ParseProblemException;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.PackageDeclaration;
 import com.github.javaparser.ast.expr.Name;
+import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
+import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.resolution.UnsolvedSymbolException;
 import com.github.javaparser.resolution.declarations.ResolvedConstructorDeclaration;
 import com.github.javaparser.resolution.declarations.ResolvedMethodDeclaration;
+import com.github.javaparser.resolution.declarations.ResolvedValueDeclaration;
 import com.github.javaparser.resolution.types.ResolvedReferenceType;
+import com.github.javaparser.resolution.types.ResolvedType;
 import com.github.javaparser.symbolsolver.JavaSymbolSolver;
 import com.github.javaparser.symbolsolver.model.resolution.TypeSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver;
@@ -940,9 +944,23 @@ public class App {
 			isMethodMatch = true;
 			List<String> fullyQualifiedInterfaceNames = new ArrayList<>();
 			String fullyQualifiedClassName = "";
+			String anotherPossibleFullyQualifiedClassName = "";
 			try {
 				ResolvedMethodDeclaration resolvedMethodDeclaration = mce.resolve();
 
+				
+				Optional<Expression> scope = mce.getScope();
+				if (scope.isPresent()) {
+					if (scope.get() instanceof NameExpr) {
+						NameExpr nameExpr = (NameExpr) scope.get();
+						ResolvedValueDeclaration resolvedName = nameExpr.resolve();
+						
+						ResolvedType resolvedNameType = resolvedName.getType();
+						anotherPossibleFullyQualifiedClassName = resolvedNameType.describe();
+						
+					}
+				}
+				
 				fullyQualifiedClassName = resolvedMethodDeclaration.getPackageName() + "."
 						+ resolvedMethodDeclaration.getClassName();
 
@@ -980,7 +998,8 @@ public class App {
 			}
 
 			if (fullyQualifiedClassName.equals(query.getFullyQualifiedClassName())
-					|| fullyQualifiedInterfaceNames.contains(query.getFullyQualifiedClassName())) {
+					|| fullyQualifiedInterfaceNames.contains(query.getFullyQualifiedClassName())
+					|| anotherPossibleFullyQualifiedClassName.equals(query.getFullyQualifiedClassName())) {
 
 				isFullyQualifiedClassNameMatch = true;
 				lines.add(mce.getBegin().get().line);
